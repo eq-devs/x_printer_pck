@@ -1,22 +1,22 @@
+//
+//  XPrinterPckPlugin.m
+//  Flutter POS Printer Plugin
+//
+
 #import "XPrinterPckPlugin.h"
 
-#import "PrinterSDK/Headers/POSBLEManager.h"
-#import "PrinterSDK/Headers/POSCommand.h"
 
-
-
-@interface XPrinterPckPlugin () <POSBLEManagerDelegate>
-@property (nonatomic, strong) FlutterMethodChannel *channel;
-@property (nonatomic, strong) POSBLEManager *bleManager;
-@property (nonatomic, strong) NSMutableArray<CBPeripheral *> *discoveredPeripherals;
-@end
+// #import "PrinterSDK/Headers/POSBLEManager.h"
+// #import "PrinterSDK/Headers/POSCommand.h"
+#import "TSCPrinterSDK.h"
+#import "TSCBLEManager.h"
 
 @implementation XPrinterPckPlugin
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     FlutterMethodChannel* channel = [FlutterMethodChannel
-        methodChannelWithName:@"x_printer_eq"
-              binaryMessenger:[registrar messenger]];
+                                     methodChannelWithName:@"x_printer_eq"
+                                     binaryMessenger:[registrar messenger]];
     XPrinterPckPlugin* instance = [[XPrinterPckPlugin alloc] init];
     instance.channel = channel;
     [registrar addMethodCallDelegate:instance channel:channel];
@@ -25,235 +25,342 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _bleManager = [POSBLEManager sharedInstance];
-        _bleManager.delegate = self;
-        _discoveredPeripherals = [NSMutableArray array];
+        self.peripherals = [NSMutableArray array];
+        self.rssiList = [NSMutableArray array];
+        self.bleManager = [TSCBLEManager sharedInstance];
+        self.bleManager.delegate = self;
     }
     return self;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
-    if ([@"startScan" isEqualToString:call.method]) {
-        [self startScan:result];
+    if ([@"scanDevices" isEqualToString:call.method]) {
+        [self startScanDevices:result];
     } else if ([@"stopScan" isEqualToString:call.method]) {
         [self stopScan:result];
-    } else if ([@"connectToDevice" isEqualToString:call.method]) {
-        NSString *uuidString = call.arguments[@"uuid"];
-        [self connectToDevice:uuidString result:result];
-    } else if ([@"disconnect" isEqualToString:call.method]) {
-        [self disconnect:result];
+    } else if ([@"connectDevice" isEqualToString:call.method]) {
+        [self connectDevice:call.arguments result:result];
+    } else if ([@"disconnectDevice" isEqualToString:call.method]) {
+        [self disconnectDevice:result];
     } else if ([@"printText" isEqualToString:call.method]) {
-        NSString *text = call.arguments[@"text"];
-        [self printText:text result:result];
+        [self printText:call.arguments result:result];
     } else if ([@"printBarcode" isEqualToString:call.method]) {
-        NSString *barcode = call.arguments[@"barcode"];
-        NSString *type = call.arguments[@"type"];
-        [self printBarcode:barcode type:type result:result];
+        [self printBarcode:call.arguments result:result];
     } else if ([@"printQRCode" isEqualToString:call.method]) {
-        NSString *qrcode = call.arguments[@"qrcode"];
-        [self printQRCode:qrcode result:result];
+        [self printQRCode:call.arguments result:result];
     } else if ([@"printImage" isEqualToString:call.method]) {
-        NSString *base64Image = call.arguments[@"image"];
-        [self printImage:base64Image result:result];
+        [self printImage:call.arguments result:result];
+    } else if ([@"getPrinterStatus" isEqualToString:call.method]) {
+        [self getPrinterStatus:result];
     } else {
         result(FlutterMethodNotImplemented);
     }
 }
 
-#pragma mark - Bluetooth Management Methods
+#pragma mark - Device Methods
 
-- (void)startScan:(FlutterResult)result {
-    [_discoveredPeripherals removeAllObjects];
-    [_bleManager startScan];
-    result(nil);
+- (void)startScanDevices:(FlutterResult)result {
+    [self.peripherals removeAllObjects];
+    [self.rssiList removeAllObjects];
+    [self.bleManager startScan];
+    result(@YES);
 }
 
 - (void)stopScan:(FlutterResult)result {
-    [_bleManager stopScan];
-    result(nil);
+    [self.bleManager stopScan];
+    result(@YES);
 }
 
-- (void)connectToDevice:(NSString *)uuidString result:(FlutterResult)result {
-    for (CBPeripheral *peripheral in _discoveredPeripherals) {
-        if ([peripheral.identifier.UUIDString isEqualToString:uuidString]) {
-            [_bleManager connectDevice:peripheral];
-            result(nil);
-            return;
-        }
+- (void)connectDevice:(id)arguments result:(FlutterResult)result {
+    NSDictionary *args = arguments;
+    NSInteger index = [args[@"index"] integerValue];
+    
+    if (index >= 0 && index < [self.peripherals count]) {
+        CBPeripheral *peripheral = self.peripherals[index];
+        [self.bleManager connectDevice:peripheral];
+        result(@YES);
+    } else {
+        result([FlutterError errorWithCode:@"INVALID_INDEX"
+                                   message:@"Invalid device index"
+                                   details:nil]);
     }
-    result([FlutterError errorWithCode:@"DEVICE_NOT_FOUND" 
-                               message:@"Device with specified UUID not found" 
-                               details:nil]);
 }
 
-- (void)disconnect:(FlutterResult)result {
-    [_bleManager disconnectRootPeripheral];
-    result(nil);
+- (void)disconnectDevice:(FlutterResult)result {
+    [self.bleManager disconnectRootPeripheral];
+    result(@YES);
 }
 
 #pragma mark - Printing Methods
 
-- (void)printText:(NSString *)text result:(FlutterResult)result {
-    if (![_bleManager printerIsConnect]) {
-        result([FlutterError errorWithCode:@"NOT_CONNECTED" 
-                                   message:@"Printer is not connected" 
+- (void)printText:(id)arguments result:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
                                    details:nil]);
         return;
     }
-    NSMutableData *dataM = [NSMutableData dataWithData:[POSCommand initializePrinter]];
+    
+    NSDictionary *args = arguments;
+    NSString *text = args[@"text"];
+    NSInteger fontSize = [args[@"fontSize"] integerValue];
+    
+    if (!text) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                   message:@"Text is required"
+                                   details:nil]);
+        return;
+    }
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
     NSStringEncoding gbkEncoding = CFStringConvertEncodingToNSStringEncoding(kCFStringEncodingGB_18030_2000);
-    [dataM appendData:[text dataUsingEncoding:gbkEncoding]];
-    [dataM appendData:[POSCommand printAndFeedLine]];
-    [_bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-        if (error) {
-            result([FlutterError errorWithCode:@"WRITE_ERROR" 
-                                       message:error.localizedDescription 
-                                       details:nil]);
-        } else {
-            result(nil);
+    
+    [dataM appendData:[TSCCommand sizeBymmWithWidth:70 andHeight:85]];
+    [dataM appendData:[TSCCommand gapBymmWithWidth:2 andHeight:0]];
+    [dataM appendData:[TSCCommand cls]];
+    
+    // Choose font based on fontSize parameter
+    NSString *font = @"2";
+    if (fontSize == 2) {
+        font = @"3";
+    } else if (fontSize == 3) {
+        font = @"4";
+    } else if (fontSize == 4) {
+        font = @"5";
+    }
+    
+    [dataM appendData:[TSCCommand textWithX:0 andY:10 andFont:font andRotation:0 andX_mul:1 andY_mul:1 andContent:text usStrEnCoding:gbkEncoding]];
+    [dataM appendData:[TSCCommand print:1]];
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+- (void)printBarcode:(id)arguments result:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
+                                   details:nil]);
+        return;
+    }
+    
+    NSDictionary *args = arguments;
+    NSString *content = args[@"content"];
+    NSInteger x = [args[@"x"] integerValue];
+    NSInteger y = [args[@"y"] integerValue];
+    NSInteger height = [args[@"height"] integerValue];
+    NSString *barcodeType = args[@"type"] ?: @"128";
+    
+    if (!content) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                   message:@"Barcode content is required"
+                                   details:nil]);
+        return;
+    }
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    
+    [dataM appendData:[TSCCommand sizeBymmWithWidth:80 andHeight:100]];
+    [dataM appendData:[TSCCommand gapBymmWithWidth:2 andHeight:0]];
+    [dataM appendData:[TSCCommand cls]];
+    [dataM appendData:[TSCCommand barcodeWithX:x andY:y andCodeType:barcodeType andHeight:height andHunabReadable:2 andRotation:0 andNarrow:2 andWide:2 andContent:content usStrEnCoding:NSUTF8StringEncoding]];
+    [dataM appendData:[TSCCommand print:1]];
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+- (void)printQRCode:(id)arguments result:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
+                                   details:nil]);
+        return;
+    }
+    
+    NSDictionary *args = arguments;
+    NSString *content = args[@"content"];
+    NSInteger x = [args[@"x"] integerValue];
+    NSInteger y = [args[@"y"] integerValue];
+    NSInteger cellWidth = [args[@"cellWidth"] integerValue] ?: 8;
+    
+    if (!content) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                   message:@"QR code content is required"
+                                   details:nil]);
+        return;
+    }
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    
+    [dataM appendData:[TSCCommand sizeBymmWithWidth:80 andHeight:100]];
+    [dataM appendData:[TSCCommand gapBymmWithWidth:2 andHeight:0]];
+    [dataM appendData:[TSCCommand cls]];
+    [dataM appendData:[TSCCommand qrCodeWithX:x andY:y andEccLevel:@"M" andCellWidth:cellWidth andMode:@"A" andRotation:0 andContent:content usStrEnCoding:NSUTF8StringEncoding]];
+    [dataM appendData:[TSCCommand print:1]];
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+- (void)printImage:(id)arguments result:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
+                                   details:nil]);
+        return;
+    }
+    
+    NSDictionary *args = arguments;
+    FlutterStandardTypedData *imageData = args[@"imageData"];
+    
+    if (!imageData) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                   message:@"Image data is required"
+                                   details:nil]);
+        return;
+    }
+    
+    NSData *data = [imageData data];
+    UIImage *image = [UIImage imageWithData:data];
+    
+    if (!image) {
+        result([FlutterError errorWithCode:@"INVALID_IMAGE"
+                                   message:@"Invalid image data"
+                                   details:nil]);
+        return;
+    }
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    
+    [dataM appendData:[TSCCommand sizeBymmWithWidth:80 andHeight:50]];
+    [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
+    [dataM appendData:[TSCCommand cls]];
+    [dataM appendData:[TSCCommand bitmapWithX:0 andY:0 andMode:0 andImage:image]];
+    [dataM appendData:[TSCCommand print:1]];
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+- (void)getPrinterStatus:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
+                                   details:nil]);
+        return;
+    }
+    
+    [self.bleManager printerStatus:^(NSData *status) {
+        unsigned statusCode = 0;
+        if (status.length == 1) {
+            const Byte *byte = (Byte *)[status bytes];
+            statusCode = byte[0];
+        } else if (status.length == 2) {
+            const Byte *byte = (Byte *)[status bytes];
+            statusCode = byte[1];
         }
+        
+        NSString *statusMessage = @"Unknown status";
+        
+        if (statusCode == 0x00) {
+            statusMessage = @"Ready";
+        } else if (statusCode == 0x01) {
+            statusMessage = @"Cover opened";
+        } else if (statusCode == 0x02) {
+            statusMessage = @"Paper jam";
+        } else if (statusCode == 0x03) {
+            statusMessage = @"Cover opened and paper jam";
+        } else if (statusCode == 0x04) {
+            statusMessage = @"Paper end";
+        } else if (statusCode == 0x05) {
+            statusMessage = @"Cover opened and Paper end";
+        } else if (statusCode == 0x08) {
+            statusMessage = @"No Ribbon";
+        } else if (statusCode == 0x09) {
+            statusMessage = @"Cover opened and no Ribbon";
+        } else if (statusCode == 0x10) {
+            statusMessage = @"Pause";
+        } else if (statusCode == 0x20) {
+            statusMessage = @"Printing";
+        }
+        
+        result(@{
+            @"code": @(statusCode),
+            @"message": statusMessage
+        });
     }];
 }
 
-- (void)printBarcode:(NSString *)barcode type:(NSString *)type result:(FlutterResult)result {
-    if (![_bleManager printerIsConnect]) {
-        result([FlutterError errorWithCode:@"NOT_CONNECTED" 
-                                   message:@"Printer is not connected" 
-                                   details:nil]);
-        return;
-    }
-    NSDictionary *barcodeTypes = @{
-        @"UPC-A": @0,
-        @"UPC-E": @1,
-        @"JAN13": @2,
-        @"JAN8": @3,
-        @"CODE39": @4,
-        @"ITF": @5,
-        @"CODEBAR": @6,
-        @"CODE93": @72,
-        @"CODE128": @73
-    };
-    NSNumber *m = barcodeTypes[type];
-    if (m == nil) {
-        result([FlutterError errorWithCode:@"INVALID_TYPE" 
-                                   message:@"Invalid barcode type" 
-                                   details:nil]);
-        return;
-    }
-    int mValue = [m intValue];
-    NSMutableData *dataM = [NSMutableData dataWithData:[POSCommand initializePrinter]];
-    [dataM appendData:[POSCommand selectAlignment:1]]; // Center alignment
-    [dataM appendData:[POSCommand setBarcodeHeight:70]];
-    [dataM appendData:[POSCommand printBarcodeWithM:mValue 
-                                         andContent:barcode 
-                                      useEnCodeing:NSUTF8StringEncoding]];
-    [dataM appendData:[POSCommand printAndFeedLine]];
-    [_bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
+#pragma mark - Helper Methods
+
+- (void)sendDataToPrinter:(NSMutableData *)data result:(FlutterResult)result {
+    __weak typeof(self) weakSelf = self;
+    [self.bleManager writeCommandWithData:data writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
         if (error) {
-            result([FlutterError errorWithCode:@"WRITE_ERROR" 
-                                       message:error.localizedDescription 
+            result([FlutterError errorWithCode:@"PRINT_ERROR"
+                                       message:error.localizedDescription
                                        details:nil]);
-        } else {
-            result(nil);
+            return;
         }
+        result(@YES);
     }];
 }
 
-- (void)printQRCode:(NSString *)qrcode result:(FlutterResult)result {
-    if (![_bleManager printerIsConnect]) {
-        result([FlutterError errorWithCode:@"NOT_CONNECTED" 
-                                   message:@"Printer is not connected" 
-                                   details:nil]);
-        return;
-    }
-    NSMutableData *dataM = [NSMutableData dataWithData:[POSCommand initializePrinter]];
-    [dataM appendData:[POSCommand selectAlignment:1]]; // Center alignment
-    [dataM appendData:[POSCommand printQRCode:6 
-                                        level:48 
-                                         code:qrcode 
-                                useEnCodeing:NSUTF8StringEncoding]];
-    [dataM appendData:[POSCommand printAndFeedLine]];
-    [_bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-        if (error) {
-            result([FlutterError errorWithCode:@"WRITE_ERROR" 
-                                       message:error.localizedDescription 
-                                       details:nil]);
-        } else {
-            result(nil);
-        }
-    }];
-}
+#pragma mark - TSCBLEManagerDelegate
 
-- (void)printImage:(NSString *)base64Image result:(FlutterResult)result {
-    if (![_bleManager printerIsConnect]) {
-        result([FlutterError errorWithCode:@"NOT_CONNECTED" 
-                                   message:@"Printer is not connected" 
-                                   details:nil]);
-        return;
-    }
-    NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64Image options:0];
-    UIImage *image = [UIImage imageWithData:imageData];
-    if (image == nil) {
-        result([FlutterError errorWithCode:@"INVALID_IMAGE" 
-                                   message:@"Invalid image data" 
-                                   details:nil]);
-        return;
-    }
-    NSMutableData *dataM = [NSMutableData dataWithData:[POSCommand initializePrinter]];
-    [dataM appendData:[POSCommand selectAlignment:1]]; // Center alignment
-    [dataM appendData:[POSCommand printRasteBmpWithM:RasterNolmorWH 
-                                           andImage:image 
-                                            andType:Dithering]];
-    [dataM appendData:[POSCommand printAndFeedLine]];
-    [_bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-        if (error) {
-            result([FlutterError errorWithCode:@"WRITE_ERROR" 
-                                       message:error.localizedDescription 
-                                       details:nil]);
-        } else {
-            result(nil);
-        }
-    }];
-}
-
-#pragma mark - POSBLEManagerDelegate Methods
-
-- (void)POSbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
-    _discoveredPeripherals = [peripherals mutableCopy];
+- (void)TSCbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
+    // Update local copies
+    [self.peripherals removeAllObjects];
+    [self.peripherals addObjectsFromArray:peripherals];
+    
+    [self.rssiList removeAllObjects];
+    [self.rssiList addObjectsFromArray:rssiList];
+    
+    // Convert peripherals to map for Flutter
     NSMutableArray *deviceList = [NSMutableArray array];
-    for (CBPeripheral *peripheral in peripherals) {
-        [deviceList addObject:peripheral.identifier.UUIDString];
+    
+    for (int i = 0; i < [peripherals count]; i++) {
+        CBPeripheral *peripheral = peripherals[i];
+        NSNumber *rssi = rssiList[i];
+        
+        NSMutableDictionary *deviceInfo = [NSMutableDictionary dictionary];
+        deviceInfo[@"name"] = peripheral.name ?: @"Unknown";
+        deviceInfo[@"address"] = peripheral.identifier.UUIDString;
+        deviceInfo[@"rssi"] = rssi;
+        
+        [deviceList addObject:deviceInfo];
     }
-    [self.channel invokeMethod:@"onDevicesUpdated" arguments:deviceList];
+    
+    [self.channel invokeMethod:@"onScanResults" arguments:deviceList];
 }
 
-- (void)POSbleConnectPeripheral:(CBPeripheral *)peripheral {
-    [self.channel invokeMethod:@"onConnectionStateChanged" arguments:@"connected"];
+- (void)TSCbleConnectPeripheral:(CBPeripheral *)peripheral {
+    NSDictionary *deviceInfo = @{
+        @"name": peripheral.name ?: @"Unknown",
+        @"address": peripheral.identifier.UUIDString,
+        @"status": @"connected"
+    };
+    
+    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
 }
 
-- (void)POSbleDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
-    [self.channel invokeMethod:@"onConnectionStateChanged" arguments:@"disconnected"];
+- (void)TSCbleDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
+    NSDictionary *deviceInfo = @{
+        @"name": peripheral.name ?: @"Unknown",
+        @"address": peripheral.identifier.UUIDString,
+        @"status": @"disconnected",
+        @"error": error ? error.localizedDescription : @""
+    };
+    
+    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
+}
+
+- (void)TSCbleFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
+    NSDictionary *deviceInfo = @{
+        @"name": peripheral.name ?: @"Unknown",
+        @"address": peripheral.identifier.UUIDString,
+        @"status": @"failed",
+        @"error": error ? error.localizedDescription : @"Failed to connect"
+    };
+    
+    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
 }
 
 @end
-
-
-// @implementation XPrinterPckPlugin
-// + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
-
-//   FlutterMethodChannel* channel = [FlutterMethodChannel
-//       methodChannelWithName:@"x_printer_pck"
-//             binaryMessenger:[registrar messenger]];
-//   XPrinterPckPlugin* instance = [[XPrinterPckPlugin alloc] init];
-//   [registrar addMethodCallDelegate:instance channel:channel];
-// }
-
-// - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
-//   if ([@"getPlatformVersion" isEqualToString:call.method]) {
-//     result([@"iOS " stringByAppendingString:[[UIDevice currentDevice] systemVersion]]);
-//   } else {
-//     result(FlutterMethodNotImplemented);
-//   }
-// }
-
-// @end

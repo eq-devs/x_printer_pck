@@ -11,83 +11,126 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
   @visibleForTesting
   final methodChannel = const MethodChannel('x_printer_eq');
 
-  // Stream controllers for handling events
-  final StreamController<List<String>> _devicesStreamController =
-      StreamController<List<String>>.broadcast();
-  final StreamController<String> _connectionStateController =
-      StreamController<String>.broadcast();
+  // Event handlers
+  Function(List<Map<String, dynamic>>)? _scanResultsHandler;
+  Function(Map<String, dynamic>)? _connectionChangedHandler;
 
-  MethodChannelXPrinterPck() {
+  @override
+  Future<void> initialize() async {
     methodChannel.setMethodCallHandler(_handleMethodCall);
   }
 
-  // Handle method calls from the native side
+  // Handle incoming method calls from native side
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
-      case 'onDevicesUpdated':
-        final List<dynamic> devices = call.arguments;
-        _devicesStreamController.add(devices.map((e) => e.toString()).toList());
+      case 'onScanResults':
+        final devices = (call.arguments as List)
+            .cast<Map<dynamic, dynamic>>()
+            .map((device) => _convertToStringDynamicMap(device))
+            .toList();
+        _scanResultsHandler?.call(devices);
         break;
-      case 'onConnectionStateChanged':
-        final String state = call.arguments;
-        _connectionStateController.add(state);
+
+      case 'onConnectionChanged':
+        final status = _convertToStringDynamicMap(call.arguments);
+        _connectionChangedHandler?.call(status);
         break;
+
       default:
-        throw PlatformException(
-          code: 'Unimplemented',
-          details: 'The method ${call.method} is not implemented',
-        );
+        print('Unknown method ${call.method}');
     }
   }
 
-  @override
-  Stream<List<String>> get devicesDiscoveredStream =>
-      _devicesStreamController.stream;
-
-  @override
-  Stream<String> get connectionStateStream => _connectionStateController.stream;
-
-  @override
-  Future<void> startScan() async {
-    await methodChannel.invokeMethod<void>('startScan');
+  // Helper method to convert Map<dynamic, dynamic> to Map<String, dynamic>
+  Map<String, dynamic> _convertToStringDynamicMap(Map<dynamic, dynamic> map) {
+    return map.map((key, value) => MapEntry(key.toString(), value));
   }
 
   @override
-  Future<void> stopScan() async {
-    await methodChannel.invokeMethod<void>('stopScan');
+  Future<bool> scanDevices() async {
+    return await methodChannel.invokeMethod('scanDevices');
   }
 
   @override
-  Future<void> connectToDevice(String uuid) async {
-    await methodChannel.invokeMethod<void>('connectToDevice', {'uuid': uuid});
+  Future<bool> stopScan() async {
+    return await methodChannel.invokeMethod('stopScan');
   }
 
   @override
-  Future<void> disconnect() async {
-    await methodChannel.invokeMethod<void>('disconnect');
+  Future<bool> connectDevice(int index) async {
+    return await methodChannel.invokeMethod('connectDevice', {'index': index});
   }
 
   @override
-  Future<void> printText(String text) async {
-    await methodChannel.invokeMethod<void>('printText', {'text': text});
+  Future<bool> disconnectDevice() async {
+    return await methodChannel.invokeMethod('disconnectDevice');
   }
 
   @override
-  Future<void> printBarcode(String barcode, String type) async {
-    await methodChannel.invokeMethod<void>('printBarcode', {
-      'barcode': barcode,
+  Future<bool> printText(String text, {int fontSize = 1}) async {
+    return await methodChannel.invokeMethod('printText', {
+      'text': text,
+      'fontSize': fontSize,
+    });
+  }
+
+  @override
+  Future<bool> printBarcode(
+    String content, {
+    int x = 100,
+    int y = 50,
+    int height = 80,
+    String type = '128',
+  }) async {
+    return await methodChannel.invokeMethod('printBarcode', {
+      'content': content,
+      'x': x,
+      'y': y,
+      'height': height,
       'type': type,
     });
   }
 
   @override
-  Future<void> printQRCode(String qrcode) async {
-    await methodChannel.invokeMethod<void>('printQRCode', {'qrcode': qrcode});
+  Future<bool> printQRCode(
+    String content, {
+    int x = 280,
+    int y = 10,
+    int cellWidth = 8,
+  }) async {
+    return await methodChannel.invokeMethod('printQRCode', {
+      'content': content,
+      'x': x,
+      'y': y,
+      'cellWidth': cellWidth,
+    });
   }
 
   @override
-  Future<void> printImage(String base64Image) async {
-    await methodChannel
-        .invokeMethod<void>('printImage', {'image': base64Image});
+  Future<bool> printImage(Uint8List imageData) async {
+    return await methodChannel.invokeMethod('printImage', {
+      'imageData': imageData,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPrinterStatus() async {
+    final result = await methodChannel.invokeMethod('getPrinterStatus');
+    return {
+      'code': result['code'],
+      'message': result['message'],
+    };
+  }
+
+  @override
+  void registerScanResultsHandler(
+      Function(List<Map<String, dynamic>>) handler) {
+    _scanResultsHandler = handler;
+  }
+
+  @override
+  void registerConnectionChangedHandler(
+      Function(Map<String, dynamic>) handler) {
+    _connectionChangedHandler = handler;
   }
 }

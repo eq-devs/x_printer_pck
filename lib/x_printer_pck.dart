@@ -1,82 +1,164 @@
 import 'x_printer_pck_platform_interface.dart';
 
 import 'dart:async';
+import 'dart:typed_data';
 
-/// The main class for the X Printer plugin
 class XPrinterPck {
-  /// Starts scanning for Bluetooth devices
-  ///
-  /// Returns a Future that completes when the scan has been started
-  Future<void> startScan() {
-    return XPrinterPckPlatform.instance.startScan();
+  // Event handlers
+  static Function(List<BluetoothDevice>)? onScanResults;
+  static Function(ConnectionStatus)? onConnectionChanged;
+
+  /// Initialize the plugin and set up method call handlers
+  static Future<void> initialize() async {
+    await XPrinterPckPlatform.instance.initialize();
+
+    // Set up event handlers
+    XPrinterPckPlatform.instance.registerScanResultsHandler(_handleScanResults);
+    XPrinterPckPlatform.instance
+        .registerConnectionChangedHandler(_handleConnectionChanged);
   }
 
-  /// Stops scanning for Bluetooth devices
-  ///
-  /// Returns a Future that completes when the scan has been stopped
-  Future<void> stopScan() {
-    return XPrinterPckPlatform.instance.stopScan();
+  // Handler for scan results
+  static void _handleScanResults(List<Map<String, dynamic>> devicesMap) {
+    final devices =
+        devicesMap.map((device) => BluetoothDevice.fromMap(device)).toList();
+    onScanResults?.call(devices);
   }
 
-  /// Connects to a Bluetooth device
-  ///
-  /// [uuid] The UUID of the device to connect to
-  /// Returns a Future that completes when the connection attempt has been initiated
-  Future<void> connectToDevice(String uuid) {
-    return XPrinterPckPlatform.instance.connectToDevice(uuid);
+  // Handler for connection status changes
+  static void _handleConnectionChanged(Map<String, dynamic> statusMap) {
+    final status = ConnectionStatus.fromMap(statusMap);
+    onConnectionChanged?.call(status);
   }
 
-  /// Disconnects from the currently connected device
-  ///
-  /// Returns a Future that completes when the disconnection has been initiated
-  Future<void> disconnect() {
-    return XPrinterPckPlatform.instance.disconnect();
+  /// Start scanning for Bluetooth devices
+  static Future<bool> scanDevices() async {
+    return await XPrinterPckPlatform.instance.scanDevices();
   }
 
-  /// Prints text to the connected printer
-  ///
-  /// [text] The text to print
-  /// Returns a Future that completes when the print command has been sent
-  Future<void> printText(String text) {
-    return XPrinterPckPlatform.instance.printText(text);
+  /// Stop scanning for Bluetooth devices
+  static Future<bool> stopScan() async {
+    return await XPrinterPckPlatform.instance.stopScan();
   }
 
-  /// Prints a barcode to the connected printer
-  ///
-  /// [barcode] The barcode content to print
-  /// [type] The type of barcode to print (e.g., 'UPC-A', 'CODE128')
-  /// Returns a Future that completes when the print command has been sent
-  Future<void> printBarcode(String barcode, String type) {
-    return XPrinterPckPlatform.instance.printBarcode(barcode, type);
+  /// Connect to a device by index in the scan results
+  static Future<bool> connectDevice(int index) async {
+    return await XPrinterPckPlatform.instance.connectDevice(index);
   }
 
-  /// Prints a QR code to the connected printer
-  ///
-  /// [qrcode] The QR code content to print
-  /// Returns a Future that completes when the print command has been sent
-  Future<void> printQRCode(String qrcode) {
-    return XPrinterPckPlatform.instance.printQRCode(qrcode);
+  /// Disconnect from the current device
+  static Future<bool> disconnectDevice() async {
+    return await XPrinterPckPlatform.instance.disconnectDevice();
   }
 
-  /// Prints an image to the connected printer
-  ///
-  /// [base64Image] The base64-encoded image data to print
-  /// Returns a Future that completes when the print command has been sent
-  Future<void> printImage(String base64Image) {
-    return XPrinterPckPlatform.instance.printImage(base64Image);
+  /// Print text
+  static Future<bool> printText(String text, {int fontSize = 1}) async {
+    return await XPrinterPckPlatform.instance
+        .printText(text, fontSize: fontSize);
   }
 
-  /// Stream for discovering Bluetooth devices
-  ///
-  /// Emits a list of device UUIDs whenever new devices are discovered
-  Stream<List<String>> get devicesDiscoveredStream {
-    return XPrinterPckPlatform.instance.devicesDiscoveredStream;
+  /// Print barcode
+  static Future<bool> printBarcode(
+    String content, {
+    int x = 100,
+    int y = 50,
+    int height = 80,
+    String type = '128',
+  }) async {
+    return await XPrinterPckPlatform.instance.printBarcode(
+      content,
+      x: x,
+      y: y,
+      height: height,
+      type: type,
+    );
   }
 
-  /// Stream for connection state changes
-  ///
-  /// Emits 'connected' or 'disconnected' when the connection state changes
-  Stream<String> get connectionStateStream {
-    return XPrinterPckPlatform.instance.connectionStateStream;
+  /// Print QR code
+  static Future<bool> printQRCode(
+    String content, {
+    int x = 280,
+    int y = 10,
+    int cellWidth = 8,
+  }) async {
+    return await XPrinterPckPlatform.instance.printQRCode(
+      content,
+      x: x,
+      y: y,
+      cellWidth: cellWidth,
+    );
   }
+
+  /// Print image
+  static Future<bool> printImage(Uint8List imageData) async {
+    return await XPrinterPckPlatform.instance.printImage(imageData);
+  }
+
+  /// Get printer status
+  static Future<PrinterStatus> getPrinterStatus() async {
+    final result = await XPrinterPckPlatform.instance.getPrinterStatus();
+    return PrinterStatus(
+      code: result['code'],
+      message: result['message'],
+    );
+  }
+}
+
+// Model classes
+
+class BluetoothDevice {
+  final String name;
+  final String address;
+  final int rssi;
+
+  BluetoothDevice({
+    required this.name,
+    required this.address,
+    required this.rssi,
+  });
+
+  factory BluetoothDevice.fromMap(Map<String, dynamic> map) {
+    return BluetoothDevice(
+      name: map['name'] as String,
+      address: map['address'] as String,
+      rssi: map['rssi'] as int,
+    );
+  }
+}
+
+class ConnectionStatus {
+  final String name;
+  final String address;
+  final String status;
+  final String error;
+
+  ConnectionStatus({
+    required this.name,
+    required this.address,
+    required this.status,
+    this.error = '',
+  });
+
+  factory ConnectionStatus.fromMap(Map<String, dynamic> map) {
+    return ConnectionStatus(
+      name: map['name'] as String,
+      address: map['address'] as String,
+      status: map['status'] as String,
+      error: map['error'] as String? ?? '',
+    );
+  }
+
+  bool get isConnected => status == 'connected';
+}
+
+class PrinterStatus {
+  final int code;
+  final String message;
+
+  PrinterStatus({
+    required this.code,
+    required this.message,
+  });
+
+  bool get isReady => code == 0x00;
 }

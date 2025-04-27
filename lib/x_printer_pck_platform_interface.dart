@@ -1,24 +1,20 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+import 'dart:typed_data';
+
 import 'x_printer_pck_method_channel.dart';
 
 /// The interface that implementations of x_printer_pck must implement.
-///
-/// Platform implementations should extend this class rather than implement it as `x_printer_pck`
-/// does not consider newly added methods to be breaking changes. Extending this class
-/// (using `extends`) ensures that the subclass will get the default implementation, while
-/// platform implementations that `implements` this interface will be broken by newly added
-/// [XPrinterPckPlatform] methods.
 abstract class XPrinterPckPlatform extends PlatformInterface {
   /// Constructs a XPrinterPckPlatform.
   XPrinterPckPlatform() : super(token: _token);
 
   static final Object _token = Object();
 
+  /// The default instance of [XPrinterPckPlatform] to use.
   static XPrinterPckPlatform _instance = MethodChannelXPrinterPck();
 
   /// The default instance of [XPrinterPckPlatform] to use.
-  ///
   /// Defaults to [MethodChannelXPrinterPck].
   static XPrinterPckPlatform get instance => _instance;
 
@@ -26,53 +22,82 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
   /// platform-specific class that extends [XPrinterPckPlatform] when
   /// they register themselves.
   static set instance(XPrinterPckPlatform instance) {
-    PlatformInterface.verify(instance, _token);
+    PlatformInterface.verifyToken(instance, _token);
     _instance = instance;
   }
 
-  /// Starts scanning for Bluetooth devices
-  Future<void> startScan() {
-    throw UnimplementedError('startScan() has not been implemented.');
+  /// Initialize the printer plugin.
+  Future<void> initialize() {
+    throw UnimplementedError('initialize() has not been implemented.');
   }
 
-  /// Stops scanning for Bluetooth devices
-  Future<void> stopScan() {
+  /// Start scanning for Bluetooth devices.
+  Future<bool> scanDevices() {
+    throw UnimplementedError('scanDevices() has not been implemented.');
+  }
+
+  /// Stop scanning for Bluetooth devices.
+  Future<bool> stopScan() {
     throw UnimplementedError('stopScan() has not been implemented.');
   }
 
-  /// Connects to a Bluetooth device by UUID
-  Future<void> connectToDevice(String uuid) {
-    throw UnimplementedError('connectToDevice() has not been implemented.');
+  /// Connect to a device by index in the scan results.
+  Future<bool> connectDevice(int index) {
+    throw UnimplementedError('connectDevice() has not been implemented.');
   }
 
-  /// Disconnects from the currently connected device
-  Future<void> disconnect() {
-    throw UnimplementedError('disconnect() has not been implemented.');
+  /// Disconnect from the current device.
+  Future<bool> disconnectDevice() {
+    throw UnimplementedError('disconnectDevice() has not been implemented.');
   }
 
-  /// Prints text
-  Future<void> printText(String text) {
+  /// Print text.
+  Future<bool> printText(String text, {int fontSize = 1}) {
     throw UnimplementedError('printText() has not been implemented.');
   }
 
-  /// Prints a barcode
-  Future<void> printBarcode(String barcode, String type) {
+  /// Print barcode.
+  Future<bool> printBarcode(
+    String content, {
+    int x = 100,
+    int y = 50,
+    int height = 80,
+    String type = '128',
+  }) {
     throw UnimplementedError('printBarcode() has not been implemented.');
   }
 
-  /// Prints a QR code
-  Future<void> printQRCode(String qrcode) {
+  /// Print QR code.
+  Future<bool> printQRCode(
+    String content, {
+    int x = 280,
+    int y = 10,
+    int cellWidth = 8,
+  }) {
     throw UnimplementedError('printQRCode() has not been implemented.');
   }
 
-  /// Prints an image from base64 data
-  Future<void> printImage(String base64Image) {
+  /// Print image.
+  Future<bool> printImage(Uint8List imageData) {
     throw UnimplementedError('printImage() has not been implemented.');
   }
 
-  /// Stream for device discovery events
-  Stream<List<String>> get devicesDiscoveredStream;
+  /// Get printer status.
+  Future<Map<String, dynamic>> getPrinterStatus() {
+    throw UnimplementedError('getPrinterStatus() has not been implemented.');
+  }
 
-  /// Stream for connection state changes
-  Stream<String> get connectionStateStream;
+  /// Register scan results handler.
+  void registerScanResultsHandler(
+      Function(List<Map<String, dynamic>>) handler) {
+    throw UnimplementedError(
+        'registerScanResultsHandler() has not been implemented.');
+  }
+
+  /// Register connection status change handler.
+  void registerConnectionChangedHandler(
+      Function(Map<String, dynamic>) handler) {
+    throw UnimplementedError(
+        'registerConnectionChangedHandler() has not been implemented.');
+  }
 }
