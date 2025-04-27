@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:x_printer_pck/x_printer_pck.dart';
 
 void main() {
@@ -11,11 +12,10 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const PrinterPage();
-  }
+  Widget build(BuildContext context) => const PrinterPage();
 }
 
+@immutable
 class PrinterPage extends StatefulWidget {
   const PrinterPage({super.key});
 
@@ -187,22 +187,22 @@ class _PrinterPageState extends State<PrinterPage> {
   }
 
   Future<void> _pickImage() async {
-    // try {
-    //   final ImagePicker picker = ImagePicker();
-    //   final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
-    //   if (image != null) {
-    //     final bytes = await image.readAsBytes();
-    //     setState(() {
-    //       _imageData = bytes;
-    //       _statusMessage = 'Image selected';
-    //     });
-    //   }
-    // } catch (e) {
-    //   setState(() {
-    //     _statusMessage = 'Error picking image: $e';
-    //   });
-    // }
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _imageData = bytes;
+          _statusMessage = 'Image selected';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Error picking image: $e';
+      });
+    }
   }
 
   void _printImage() async {
@@ -213,12 +213,12 @@ class _PrinterPageState extends State<PrinterPage> {
       return;
     }
 
+    // 2-inch printer: ~384 dots
+    // 3-inch printer: ~576 dots
+    // 4-inch printer: ~832 dots
     try {
-      final result = await XPrinterPck.printImage(_imageData!);
-      setState(() {
-        _statusMessage =
-            result ? 'Image printed successfully' : 'Failed to print image';
-      });
+      await XPrinterPck.printImage(_imageData!,
+          commandType: 1, printerWidth: 832, scale: 1.25);
     } catch (e) {
       setState(() {
         _statusMessage = 'Error printing image: $e';

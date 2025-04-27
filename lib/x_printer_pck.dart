@@ -1,3 +1,4 @@
+
 import 'x_printer_pck_platform_interface.dart';
 
 import 'dart:async';
@@ -90,8 +91,22 @@ class XPrinterPck {
   }
 
   /// Print image
-  static Future<bool> printImage(Uint8List imageData) async {
-    return await XPrinterPckPlatform.instance.printImage(imageData);
+  static Future<bool> printImage(
+    Uint8List imageData, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+  }) async {
+    return await XPrinterPckPlatform.instance.printImage(
+      imageData,
+      commandType: commandType,
+      printerWidth: printerWidth,
+      printerHeight: printerHeight,
+      rotation: rotation,
+      scale: scale,
+    );
   }
 
   /// Get printer status

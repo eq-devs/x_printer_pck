@@ -78,7 +78,14 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
   }
 
   /// Print image.
-  Future<bool> printImage(Uint8List imageData) {
+  Future<bool> printImage(
+    Uint8List imageData, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+  }) {
     throw UnimplementedError('printImage() has not been implemented.');
   }
 

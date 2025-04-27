@@ -198,13 +198,35 @@
     [dataM appendData:[TSCCommand print:1]];
     
     [self sendDataToPrinter:dataM result:result];
-}
+} 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 - (void)printImage:(id)arguments result:(FlutterResult)result {
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
-                                   message:@"Printer not connected"
-                                   details:nil]);
+                                  message:@"Printer not connected"
+                                  details:nil]);
         return;
     }
     
@@ -213,8 +235,8 @@
     
     if (!imageData) {
         result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
-                                   message:@"Image data is required"
-                                   details:nil]);
+                                  message:@"Image data is required"
+                                  details:nil]);
         return;
     }
     
@@ -222,23 +244,196 @@
     UIImage *image = [UIImage imageWithData:data];
     
     if (!image) {
+        NSLog(@"Failed to create UIImage from data of length: %lu", (unsigned long)data.length);
         result([FlutterError errorWithCode:@"INVALID_IMAGE"
-                                   message:@"Invalid image data"
-                                   details:nil]);
+                                  message:@"Invalid image data"
+                                  details:nil]);
         return;
     }
     
     NSMutableData *dataM = [[NSMutableData alloc] init];
     
-    [dataM appendData:[TSCCommand sizeBymmWithWidth:80 andHeight:50]];
-    [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
-    [dataM appendData:[TSCCommand cls]];
-    [dataM appendData:[TSCCommand bitmapWithX:0 andY:0 andMode:0 andImage:image]];
-    [dataM appendData:[TSCCommand print:1]];
+    // Get command type from arguments (default to TSC/0 if not provided)
+    NSNumber *commandTypeNum = args[@"commandType"];
+    int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
+    
+    // Get printer parameters
+    NSNumber *printerWidthNum = args[@"printerWidth"];
+    NSNumber *printerHeightNum = args[@"printerHeight"];
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384; // Default printer width in dots
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600; // Default printer height in dots
+    
+    // Get rotation angle from arguments (default to 0 if not provided)
+    NSNumber *rotationAngleNum = args[@"rotation"];
+    int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
+    
+    // Get scale (default to 0.9 if not provided)
+    NSNumber *scaleNum = args[@"scale"];
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9; // Default 90% of printer width
+    
+    // Calculate target size based on printer width and scale
+    CGFloat imageRatio = image.size.width / image.size.height;
+    CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
+    
+    // If height exceeds printer height, scale down based on height
+    if (targetSize.height > printerHeight * scale) {
+        targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+    }
+    
+    // Resize image to fit printer
+    UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
+    [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
+    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    if (resizedImage) {
+        image = resizedImage;
+    }
+    
+    // Apply rotation if needed
+    if (rotationAngle != 0) {
+        // Convert degrees to radians
+        CGFloat radians = rotationAngle * M_PI / 180.0;
+        
+        // Calculate the size of the rotated image
+        CGRect rotatedRect = CGRectApplyAffineTransform(
+            CGRectMake(0, 0, image.size.width, image.size.height),
+            CGAffineTransformMakeRotation(radians));
+        
+        CGSize rotatedSize = rotatedRect.size;
+        
+        // Create a new context with the rotated size
+        UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        
+        // Move to center and rotate
+        CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
+        CGContextRotateCTM(context, radians);
+        
+        // Draw the original image centered
+        [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
+                                    image.size.width, image.size.height)];
+        
+        // Get the rotated image
+        UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
+        if (rotatedImage) {
+            image = rotatedImage;
+        }
+    }
+    
+    // Calculate centered position
+    int xPos = (printerWidth - image.size.width) / 2;
+    int yPos = (printerHeight - image.size.height) / 2;
+    
+    // Convert to mm for TSC
+    int xPosMM = xPos / 8;
+    int yPosMM = yPos / 8;
+    
+    switch (commandType) {
+        // TSPL
+        case 0:
+        {
+            int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
+            int mmHeight = printerHeight / 8;
+            
+            [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
+            [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
+            [dataM appendData:[TSCCommand cls]];
+            
+            [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
+            [dataM appendData:[TSCCommand print:1]];
+        }
+            break;
+            
+        // ZPL
+        case 1:
+        {
+            [dataM appendData:[ZPLCommand XA]];
+            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+            
+            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[ZPLCommand XZ]];
+        }
+            break;
+            
+        // CPCL
+        case 2:
+        {
+            [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
+            
+            [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[CPCLCommand form]];
+            [dataM appendData:[CPCLCommand print]];
+        }
+            break;
+            
+        default:
+            break;
+    }
     
     [self sendDataToPrinter:dataM result:result];
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
 - (void)getPrinterStatus:(FlutterResult)result {
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"

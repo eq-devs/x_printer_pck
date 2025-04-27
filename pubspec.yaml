@@ -1,7 +1,13 @@
 name: x_printer_pck
-description: "A new Flutter plugin project."
+
+
+description: Flutter plugin for iOS Bluetooth thermal printer integration
 version: 0.0.1
-homepage:
+homepage: https://github.com/eq-devs/x_printer_pck
+repository: https://github.com/eq-devs/x_printer_pck
+issue_tracker: https://github.com/eq-devs/x_printer_pck/issues
+
+
 
 environment:
   sdk: ^3.5.4

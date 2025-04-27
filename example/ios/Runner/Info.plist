@@ -52,5 +52,14 @@
 	    <string>Need BLE permission</string>
 	    <key>NSBluetoothPeripheralUsageDescription</key>
 	    <string>Need BLE permission</string>
+
+
+
+	    <key>NSCameraUsageDescription</key>
+<string>We need access to your camera for capturing photos</string>
+
+<key>NSPhotoLibraryUsageDescription</key>
+<string>We need access to your photo library to pick photos</string>
+
 </dict>
 </plist>

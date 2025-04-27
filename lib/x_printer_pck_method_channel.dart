@@ -5,6 +5,13 @@ import 'x_printer_pck_platform_interface.dart';
 
 import 'dart:async';
 
+// Enum for image alignment options
+enum PrintAlignment {
+  center, // Center the image on the paper
+  topLeft, // Position at top-left corner
+  custom, // Use custom X/Y coordinates
+}
+
 /// An implementation of [XPrinterPckPlatform] that uses method channels.
 class MethodChannelXPrinterPck extends XPrinterPckPlatform {
   /// The method channel used to interact with the native platform.
@@ -107,9 +114,21 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
   }
 
   @override
-  Future<bool> printImage(Uint8List imageData) async {
+  Future<bool> printImage(
+    Uint8List imageData, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+  }) async {
     return await methodChannel.invokeMethod('printImage', {
       'imageData': imageData,
+      'commandType': commandType,
+      if (printerWidth != null) 'printerWidth': printerWidth,
+      if (printerHeight != null) 'printerHeight': printerHeight,
+      'rotation': rotation,
+      'scale': scale,
     });
   }
 
