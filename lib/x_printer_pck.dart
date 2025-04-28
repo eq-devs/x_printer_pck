@@ -1,4 +1,3 @@
-
 import 'x_printer_pck_platform_interface.dart';
 
 import 'dart:async';
@@ -106,6 +105,30 @@ class XPrinterPck {
       printerHeight: printerHeight,
       rotation: rotation,
       scale: scale,
+    );
+  }
+
+  static Future<bool> printPDF(
+    String pdfPath, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+    int? startPage,
+    int? endPage,
+    String? password,
+  }) async {
+    return await XPrinterPckPlatform.instance.printPDF(
+      pdfPath,
+      commandType: commandType,
+      printerWidth: printerWidth,
+      printerHeight: printerHeight,
+      rotation: rotation,
+      scale: scale,
+      startPage: startPage,
+      endPage: endPage,
+      password: password,
     );
   }
 

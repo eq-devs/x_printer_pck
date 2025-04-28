@@ -132,6 +132,46 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     });
   }
 
+  /// Prints a PDF file through the thermal printer
+  ///
+  /// [pdfPath] - Path to the PDF file on the device filesystem
+  /// [commandType] - Printer command language (0: TSPL, 1: ZPL, 2: CPCL)
+  /// [printerWidth] - Width of the printer in dots (default: 384)
+  /// [printerHeight] - Height of the printer in dots (default: 600)
+  /// [rotation] - Rotation angle in degrees (default: 0)
+  /// [scale] - Scale factor for the image (default: 0.9)
+  /// [startPage] - First page to print (default: 1)
+  /// [endPage] - Last page to print (0 means print all pages, default: 0)
+  /// [password] - Password for protected PDFs (optional)
+  @override
+  Future<bool> printPDF(
+    String pdfPath, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+    int? startPage,
+    int? endPage,
+    String? password,
+  }) async {
+    try {
+      return await methodChannel.invokeMethod('printPDF', {
+        'pdfPath': pdfPath,
+        'commandType': commandType,
+        if (printerWidth != null) 'printerWidth': printerWidth,
+        if (printerHeight != null) 'printerHeight': printerHeight,
+        'rotation': rotation,
+        'scale': scale,
+        if (startPage != null) 'startPage': startPage,
+        if (endPage != null) 'endPage': endPage,
+        if (password != null) 'password': password,
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   @override
   Future<Map<String, dynamic>> getPrinterStatus() async {
     final result = await methodChannel.invokeMethod('getPrinterStatus');

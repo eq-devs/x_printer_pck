@@ -89,6 +89,20 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
     throw UnimplementedError('printImage() has not been implemented.');
   }
 
+  Future<bool> printPDF(
+    String pdfPath, {
+    int commandType = 0,
+    int? printerWidth,
+    int? printerHeight,
+    int rotation = 0,
+    double scale = 0.9,
+    int? startPage,
+    int? endPage,
+    String? password,
+  }) {
+    throw UnimplementedError('printImage() has not been implemented.');
+  }
+
   /// Get printer status.
   Future<Map<String, dynamic>> getPrinterStatus() {
     throw UnimplementedError('getPrinterStatus() has not been implemented.');

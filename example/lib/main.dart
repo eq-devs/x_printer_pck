@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:x_printer_pck/x_printer_pck.dart';
 
 void main() {
@@ -32,6 +35,86 @@ class _PrinterPageState extends State<PrinterPage> {
   Uint8List? _imageData;
   bool _isScanning = false;
   String _statusMessage = '';
+
+  String? _pdfPath;
+  String? _pdfFileName;
+
+// Add this function to pick a PDF file
+  Future<void> _pickPDF() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        // Request a data URL that works better in iOS
+        withData: true,
+      );
+
+      if (result != null) {
+        final file = result.files.single;
+        setState(() {
+          // Store both path and bytes for flexibility
+          _pdfPath = file.path;
+          _pdfFileName = file.name;
+          _statusMessage = 'PDF selected: $_pdfFileName';
+        });
+
+        // For iOS specifically, you might need to create a temporary file
+        // from the bytes to ensure reliable access:
+        if (Platform.isIOS && _pdfPath != null) {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/${file.name}');
+
+          if (file.bytes != null) {
+            await tempFile.writeAsBytes(file.bytes!);
+            _pdfPath = tempFile.path;
+          }
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Error picking PDF: $e';
+      });
+    }
+  }
+
+  void _printPDF() async {
+    if (_pdfPath == null) {
+      setState(() {
+        _statusMessage = 'Please select a PDF file first';
+      });
+      return;
+    }
+
+    try {
+      // First verify the file exists and is accessible
+      final file = File(_pdfPath!);
+      if (!await file.exists()) {
+        setState(() {
+          _statusMessage = 'Error: Cannot access the PDF file';
+        });
+        return;
+      }
+
+      // Now print the PDF
+      bool result = await XPrinterPck.printPDF(
+        _pdfPath!,
+        commandType: 1,
+        printerWidth: 832,
+        scale: 1.1,
+      );
+
+      setState(() {
+        _statusMessage =
+            result ? 'PDF printed successfully' : 'Failed to print PDF';
+      });
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Error printing PDF: $e';
+      });
+
+      print(e);
+    }
+  }
 
   @override
   void initState() {
@@ -77,8 +160,6 @@ class _PrinterPageState extends State<PrinterPage> {
         _statusMessage = 'Error starting scan: $e';
         _isScanning = false;
       });
-
-      print(e);
     }
   }
 
@@ -103,7 +184,6 @@ class _PrinterPageState extends State<PrinterPage> {
       setState(() {
         _statusMessage = 'Connecting to ${_devices[index].name}...';
       });
-
       await XPrinterPck.connectDevice(index);
     } catch (e) {
       setState(() {
@@ -506,6 +586,58 @@ class _PrinterPageState extends State<PrinterPage> {
                   ),
                 ),
               ],
+
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Print PDF',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 60,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              _pdfFileName ?? 'No PDF selected',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.upload_file),
+                              label: const Text('Select PDF'),
+                              onPressed: _pickPDF,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.print),
+                              label: const Text('Print PDF'),
+                              onPressed: _pdfPath != null ? _printPDF : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
