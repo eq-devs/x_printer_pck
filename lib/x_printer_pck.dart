@@ -18,6 +18,15 @@ class XPrinterPck {
         .registerConnectionChangedHandler(_handleConnectionChanged);
   }
 
+  static Future<bool> init() async {
+    try {
+      final bool isInitialized = await XPrinterPckPlatform.instance.init();
+      return isInitialized;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Handler for scan results
   static void _handleScanResults(List<Map<String, dynamic>> devicesMap) {
     final devices =

@@ -119,7 +119,7 @@ class _PrinterPageState extends State<PrinterPage> {
   @override
   void initState() {
     super.initState();
-
+    XPrinterPck.init();
     XPrinterPck.initialize();
     // Set up event listeners
     XPrinterPck.onScanResults = (devices) {
