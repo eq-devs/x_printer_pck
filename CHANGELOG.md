@@ -32,3 +32,16 @@ feat: Add PDF printing functionality to x_printer_pck
 - Extended MethodChannel to support PDF printing commands.
 - Updated platform interface to declare printPDF method.
 - Enhanced XPrinterPckPlugin.m to handle PDF printing logic.
+
+
+
+## 0.0.4
+
+Enhance printing capabilities with base64 support and improved defaults
+
+- Added printImageBase64 method for printing images from base64 strings with advanced configuration options.
+- Updated printImage and printPDF methods to use improved default values for printer width, height, and scale.
+- Introduced PrinterCommandType enum for better command type management.
+- Enhanced error handling and validation for printImageBase64 parameters.
+- Updated platform interface and method channel implementations to support new features.
+- Improved BluetoothDevice and ConnectionStatus models with additional properties and string representations.
