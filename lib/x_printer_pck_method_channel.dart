@@ -9,7 +9,51 @@ import 'dart:async';
 enum PrintAlignment {
   center, // Center the image on the paper
   topLeft, // Position at top-left corner
+  topRight, // Position at top-right corner
+  bottomLeft, // Position at bottom-left corner
+  bottomRight, // Position at bottom-right corner
   custom, // Use custom X/Y coordinates
+}
+
+// Enum for printer command types
+enum PrinterCommandType {
+  tspl, // TSC Printer Language
+  zpl, // Zebra Programming Language
+  cpcl, // Comtec Printer Control Language
+}
+
+// Extension to convert enum to int
+extension PrinterCommandTypeExtension on PrinterCommandType {
+  int get value {
+    switch (this) {
+      case PrinterCommandType.tspl:
+        return 0;
+      case PrinterCommandType.zpl:
+        return 1;
+      case PrinterCommandType.cpcl:
+        return 2;
+    }
+  }
+}
+
+// Extension to convert enum to string
+extension PrintAlignmentExtension on PrintAlignment {
+  String get value {
+    switch (this) {
+      case PrintAlignment.center:
+        return 'center';
+      case PrintAlignment.topLeft:
+        return 'topLeft';
+      case PrintAlignment.topRight:
+        return 'topRight';
+      case PrintAlignment.bottomLeft:
+        return 'bottomLeft';
+      case PrintAlignment.bottomRight:
+        return 'bottomRight';
+      case PrintAlignment.custom:
+        return 'custom';
+    }
+  }
 }
 
 /// An implementation of [XPrinterPckPlatform] that uses method channels.
@@ -117,40 +161,56 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
   Future<bool> printImage(
     Uint8List imageData, {
     int commandType = 0,
-    int? printerWidth,
-    int? printerHeight,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
     int rotation = 0,
-    double scale = 0.9,
+    double scale = 0.91,
   }) async {
     return await methodChannel.invokeMethod('printImage', {
       'imageData': imageData,
       'commandType': commandType,
-      if (printerWidth != null) 'printerWidth': printerWidth,
-      if (printerHeight != null) 'printerHeight': printerHeight,
+      'printerWidth': printerWidth,
+      'printerHeight': printerHeight,
       'rotation': rotation,
       'scale': scale,
     });
   }
 
-  /// Prints a PDF file through the thermal printer
-  ///
-  /// [pdfPath] - Path to the PDF file on the device filesystem
-  /// [commandType] - Printer command language (0: TSPL, 1: ZPL, 2: CPCL)
-  /// [printerWidth] - Width of the printer in dots (default: 384)
-  /// [printerHeight] - Height of the printer in dots (default: 600)
-  /// [rotation] - Rotation angle in degrees (default: 0)
-  /// [scale] - Scale factor for the image (default: 0.9)
-  /// [startPage] - First page to print (default: 1)
-  /// [endPage] - Last page to print (0 means print all pages, default: 0)
-  /// [password] - Password for protected PDFs (optional)
+  @override
+  Future<bool> printImageBase64(
+    String base64String, {
+    int commandType = 0,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
+    int rotation = 0,
+    double scale = 0.91,
+    double quality = 1.0,
+    String alignment = 'center',
+    int? x,
+    int? y,
+  }) async {
+    return await methodChannel.invokeMethod('printImageBase64', {
+      'base64String': base64String,
+      'commandType': commandType,
+      'printerWidth': printerWidth,
+      'printerHeight': printerHeight,
+      'rotation': rotation,
+      'scale': scale,
+      'quality': quality,
+      'alignment': alignment,
+      if (x != null) 'x': x,
+      if (y != null) 'y': y,
+    });
+  }
+
   @override
   Future<bool> printPDF(
     String pdfPath, {
     int commandType = 0,
-    int? printerWidth,
-    int? printerHeight,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
     int rotation = 0,
-    double scale = 0.9,
+    double scale = 0.91,
     int? startPage,
     int? endPage,
     String? password,
@@ -159,8 +219,8 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
       return await methodChannel.invokeMethod('printPDF', {
         'pdfPath': pdfPath,
         'commandType': commandType,
-        if (printerWidth != null) 'printerWidth': printerWidth,
-        if (printerHeight != null) 'printerHeight': printerHeight,
+        'printerWidth': printerWidth,
+        'printerHeight': printerHeight,
         'rotation': rotation,
         'scale': scale,
         if (startPage != null) 'startPage': startPage,

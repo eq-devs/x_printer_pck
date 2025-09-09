@@ -14,5 +14,7 @@
 @property (nonatomic, strong) NSMutableArray *peripherals;
 @property (nonatomic, strong) NSMutableArray *rssiList;
 
-@end
+// Method declarations
+- (void)printImageBase64:(id)arguments result:(FlutterResult)result;
 
+@end

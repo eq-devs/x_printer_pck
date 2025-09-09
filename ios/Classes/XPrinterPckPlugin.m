@@ -1,10 +1,5 @@
-//
-//  XPrinterPckPlugin.m
-//  Flutter POS Printer Plugin
-//
-
+ 
 #import "XPrinterPckPlugin.h"
-
 
 // #import "PrinterSDK/Headers/POSBLEManager.h"
 // #import "PrinterSDK/Headers/POSCommand.h"
@@ -51,14 +46,13 @@
         [self printQRCode:call.arguments result:result];
     } else if ([@"printImage" isEqualToString:call.method]) {
         [self printImage:call.arguments result:result];
+    } else if ([@"printImageBase64" isEqualToString:call.method]) {
+        [self printImageBase64:call.arguments result:result];
     } else if ([@"getPrinterStatus" isEqualToString:call.method]) {
         [self getPrinterStatus:result];
-    } 
-     else if ([@"printPDF" isEqualToString:call.method]) {
+    } else if ([@"printPDF" isEqualToString:call.method]) {
         [self printPDF:call.arguments result:result];
-    }
-    
-    else {
+    } else {
         result(FlutterMethodNotImplemented);
     }
 }
@@ -204,29 +198,7 @@
     [dataM appendData:[TSCCommand print:1]];
     
     [self sendDataToPrinter:dataM result:result];
-} 
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
 
 - (void)printImage:(id)arguments result:(FlutterResult)result {
     if (!self.bleManager.isConnecting) {
@@ -266,8 +238,8 @@
     // Get printer parameters
     NSNumber *printerWidthNum = args[@"printerWidth"];
     NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384; // Default printer width in dots
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600; // Default printer height in dots
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600;
     
     // Get rotation angle from arguments (default to 0 if not provided)
     NSNumber *rotationAngleNum = args[@"rotation"];
@@ -275,7 +247,7 @@
     
     // Get scale (default to 0.9 if not provided)
     NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9; // Default 90% of printer width
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9;
     
     // Calculate target size based on printer width and scale
     CGFloat imageRatio = image.size.width / image.size.height;
@@ -298,29 +270,22 @@
     
     // Apply rotation if needed
     if (rotationAngle != 0) {
-        // Convert degrees to radians
         CGFloat radians = rotationAngle * M_PI / 180.0;
-        
-        // Calculate the size of the rotated image
         CGRect rotatedRect = CGRectApplyAffineTransform(
             CGRectMake(0, 0, image.size.width, image.size.height),
             CGAffineTransformMakeRotation(radians));
         
         CGSize rotatedSize = rotatedRect.size;
         
-        // Create a new context with the rotated size
         UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
         CGContextRef context = UIGraphicsGetCurrentContext();
         
-        // Move to center and rotate
         CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
         CGContextRotateCTM(context, radians);
         
-        // Draw the original image centered
         [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
                                     image.size.width, image.size.height)];
         
-        // Get the rotated image
         UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
         
@@ -332,10 +297,301 @@
     // Calculate centered position
     int xPos = (printerWidth - image.size.width) / 2;
     int yPos = (printerHeight - image.size.height) / 2;
-    
-    // Convert to mm for TSC
     int xPosMM = xPos / 8;
     int yPosMM = yPos / 8;
+    
+    switch (commandType) {
+        case 0: // TSPL
+        {
+            int mmWidth = printerWidth / 8;
+            int mmHeight = printerHeight / 8;
+            
+            [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
+            [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
+            [dataM appendData:[TSCCommand cls]];
+            
+            [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
+            [dataM appendData:[TSCCommand print:1]];
+        }
+            break;
+            
+        case 1: // ZPL
+        {
+            [dataM appendData:[ZPLCommand XA]];
+            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+            
+            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[ZPLCommand XZ]];
+        }
+            break;
+            
+        case 2: // CPCL
+        {
+            [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
+            
+            [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[CPCLCommand form]];
+            [dataM appendData:[CPCLCommand print]];
+        }
+            break;
+            
+        default:
+            break;
+    }
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+// NEW BASE64 PRINT METHOD
+- (void)printImageBase64:(id)arguments result:(FlutterResult)result {
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                  message:@"Printer not connected"
+                                  details:nil]);
+        return;
+    }
+    
+    NSDictionary *args = arguments;
+    NSString *base64String = args[@"base64String"];
+    
+    if (!base64String || [base64String length] == 0) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                  message:@"Base64 string is required"
+                                  details:nil]);
+        return;
+    }
+    
+    // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+    if ([base64String containsString:@","]) {
+        NSArray *components = [base64String componentsSeparatedByString:@","];
+        if ([components count] > 1) {
+            base64String = [components lastObject];
+        }
+    }
+    
+    // Decode Base64 string to NSData
+    NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    
+    if (!imageData) {
+        NSLog(@"Failed to decode Base64 string");
+        result([FlutterError errorWithCode:@"INVALID_BASE64"
+                                  message:@"Invalid Base64 string"
+                                  details:nil]);
+        return;
+    }
+    
+    // Convert NSData to UIImage
+    UIImage *image = [UIImage imageWithData:imageData];
+    
+    if (!image) {
+        NSLog(@"Failed to create UIImage from decoded data of length: %lu", (unsigned long)imageData.length);
+        result([FlutterError errorWithCode:@"INVALID_IMAGE"
+                                  message:@"Invalid image data in Base64 string"
+                                  details:nil]);
+        return;
+    }
+    
+    NSLog(@"Successfully decoded Base64 image: %.0f x %.0f", image.size.width, image.size.height);
+    
+    // Get configuration parameters
+    NSNumber *commandTypeNum = args[@"commandType"];
+    int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
+    
+    NSNumber *printerWidthNum = args[@"printerWidth"];
+    NSNumber *printerHeightNum = args[@"printerHeight"];
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600;
+    
+    NSNumber *rotationAngleNum = args[@"rotation"];
+    int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
+    
+    NSNumber *scaleNum = args[@"scale"];
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9;
+    
+    // Quality settings
+    NSNumber *qualityNum = args[@"quality"];
+    CGFloat quality = qualityNum ? [qualityNum floatValue] : 1.0;
+    
+    // Alignment settings
+    NSString *alignmentStr = args[@"alignment"] ?: @"center";
+    
+    // Custom position (used when alignment is "custom")
+    NSNumber *customXNum = args[@"x"];
+    NSNumber *customYNum = args[@"y"];
+    int customX = customXNum ? [customXNum intValue] : 0;
+    int customY = customYNum ? [customYNum intValue] : 0;
+    
+    // Process image with configuration
+    UIImage *processedImage = [self processImage:image 
+                                    printerWidth:printerWidth 
+                                   printerHeight:printerHeight 
+                                           scale:scale 
+                                        rotation:rotationAngle 
+                                         quality:quality];
+    
+    if (!processedImage) {
+        result([FlutterError errorWithCode:@"IMAGE_PROCESSING_ERROR"
+                                  message:@"Failed to process image"
+                                  details:nil]);
+        return;
+    }
+    
+    // Calculate position based on alignment
+    CGPoint position = [self calculatePosition:processedImage.size 
+                                  printerWidth:printerWidth 
+                                 printerHeight:printerHeight 
+                                     alignment:alignmentStr 
+                                       customX:customX 
+                                       customY:customY];
+    
+    // Generate printer commands
+    NSMutableData *dataM = [self generatePrintCommands:processedImage 
+                                               position:position 
+                                           commandType:commandType 
+                                          printerWidth:printerWidth 
+                                         printerHeight:printerHeight];
+    
+    if (!dataM) {
+        result([FlutterError errorWithCode:@"COMMAND_GENERATION_ERROR"
+                                  message:@"Failed to generate printer commands"
+                                  details:nil]);
+        return;
+    }
+    
+    // Send to printer
+    [self sendDataToPrinter:dataM result:result];
+}
+
+#pragma mark - Image Processing Helpers
+
+- (UIImage *)processImage:(UIImage *)originalImage 
+             printerWidth:(int)printerWidth 
+            printerHeight:(int)printerHeight 
+                    scale:(CGFloat)scale 
+                 rotation:(int)rotationAngle 
+                  quality:(CGFloat)quality {
+    
+    UIImage *image = originalImage;
+    NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
+    
+    // 1. Calculate target size based on printer width and scale
+    CGFloat imageRatio = image.size.width / image.size.height;
+    CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
+    
+    // If height exceeds printer height, scale down based on height
+    if (targetSize.height > printerHeight * scale) {
+        targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+    }
+    
+    NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
+    
+    // 2. Resize image with quality settings
+    UIGraphicsBeginImageContextWithOptions(targetSize, NO, quality);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    
+    // Set interpolation quality
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGContextSetShouldAntialias(context, YES);
+    CGContextSetAllowsAntialiasing(context, YES);
+    
+    [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
+    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    if (resizedImage) {
+        image = resizedImage;
+        NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
+    }
+    
+    // 3. Apply rotation if needed
+    if (rotationAngle != 0) {
+        image = [self rotateImage:image byAngle:rotationAngle];
+        NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
+    }
+    
+    return image;
+}
+
+- (UIImage *)rotateImage:(UIImage *)image byAngle:(int)degrees {
+    // Convert degrees to radians
+    CGFloat radians = degrees * M_PI / 180.0;
+    
+    // Calculate the size of the rotated image
+    CGRect rotatedRect = CGRectApplyAffineTransform(
+        CGRectMake(0, 0, image.size.width, image.size.height),
+        CGAffineTransformMakeRotation(radians));
+    
+    CGSize rotatedSize = rotatedRect.size;
+    
+    // Create a new context with the rotated size
+    UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    
+    // Move to center and rotate
+    CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
+    CGContextRotateCTM(context, radians);
+    
+    // Draw the original image centered
+    [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
+                                image.size.width, image.size.height)];
+    
+    // Get the rotated image
+    UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    return rotatedImage;
+}
+
+- (CGPoint)calculatePosition:(CGSize)imageSize 
+                printerWidth:(int)printerWidth 
+               printerHeight:(int)printerHeight 
+                   alignment:(NSString *)alignment 
+                     customX:(int)customX 
+                     customY:(int)customY {
+    
+    CGPoint position = CGPointZero;
+    
+    if ([alignment isEqualToString:@"center"]) {
+        position.x = (printerWidth - imageSize.width) / 2;
+        position.y = (printerHeight - imageSize.height) / 2;
+    } else if ([alignment isEqualToString:@"topLeft"]) {
+        position.x = 0;
+        position.y = 0;
+    } else if ([alignment isEqualToString:@"topRight"]) {
+        position.x = printerWidth - imageSize.width;
+        position.y = 0;
+    } else if ([alignment isEqualToString:@"bottomLeft"]) {
+        position.x = 0;
+        position.y = printerHeight - imageSize.height;
+    } else if ([alignment isEqualToString:@"bottomRight"]) {
+        position.x = printerWidth - imageSize.width;
+        position.y = printerHeight - imageSize.height;
+    } else if ([alignment isEqualToString:@"custom"]) {
+        position.x = customX;
+        position.y = customY;
+    } else {
+        // Default to center
+        position.x = (printerWidth - imageSize.width) / 2;
+        position.y = (printerHeight - imageSize.height) / 2;
+    }
+    
+    // Ensure position is within bounds
+    position.x = MAX(0, MIN(position.x, printerWidth - imageSize.width));
+    position.y = MAX(0, MIN(position.y, printerHeight - imageSize.height));
+    
+    return position;
+}
+
+- (NSMutableData *)generatePrintCommands:(UIImage *)image 
+                                position:(CGPoint)position 
+                            commandType:(int)commandType 
+                           printerWidth:(int)printerWidth 
+                          printerHeight:(int)printerHeight {
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    
+    int xPos = (int)position.x;
+    int yPos = (int)position.y;
     
     switch (commandType) {
         // TSPL
@@ -343,6 +599,8 @@
         {
             int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
             int mmHeight = printerHeight / 8;
+            int xPosMM = xPos / 8;
+            int yPosMM = yPos / 8;
             
             [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
             [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
@@ -376,24 +634,12 @@
             break;
             
         default:
-            break;
+            NSLog(@"Unknown command type: %d", commandType);
+            return nil;
     }
     
-    [self sendDataToPrinter:dataM result:result];
+    return dataM;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 - (void)printPDF:(id)arguments result:(FlutterResult)result {
     if (!self.bleManager.isConnecting) {
@@ -442,8 +688,8 @@
     // Get printer parameters
     NSNumber *printerWidthNum = args[@"printerWidth"];
     NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384; // Default printer width in dots
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600; // Default printer height in dots
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600;
     
     // Get rotation angle from arguments (default to 0 if not provided)
     NSNumber *rotationAngleNum = args[@"rotation"];
@@ -451,417 +697,334 @@
     
     // Get scale (default to 0.9 if not provided)
     NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9; // Default 90% of printer width
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9;
     
     // Get specific page to print (if specified)
     NSNumber *startPageNum = args[@"startPage"];
+    // NSNumber *endPageNum
     NSNumber *endPageNum = args[@"endPage"];
-    int startPage = startPageNum ? [startPageNum intValue] : 1; // Default to first page
-    int endPage = endPageNum ? [endPageNum intValue] : totalPages; // Default to all pages
-    
-    // Validate page numbers
-    if (startPage < 1) startPage = 1;
-    if (startPage > totalPages) startPage = totalPages;
-    if (endPage > totalPages) endPage = totalPages;
-    if (endPage < startPage) endPage = startPage;
-    
-    // Password for protected PDFs (if provided)
-    NSString *password = args[@"password"];
-    
-    // Log the parsing attempt
-    NSLog(@"Attempting to parse PDF: %@, pages %d to %d of %d total pages", 
-          pdfPath, startPage, endPage, totalPages);
-    
-    // Parse PDF using LabelDocument
-    [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
-        NSLog(@"PDF parsing complete with error code: %ld, images count: %lu", 
-              (long)errorCode, (unsigned long)sourceImages.count);
-        
-        if (errorCode != DocSuccess) {
-            NSString *errorMessage;
-            switch (errorCode) {
-                case CGPDFDocumentRefNULL:
-                    errorMessage = @"Failed to create PDF document reference";
-                    break;
-                case PageNumberExceeds:
-                    errorMessage = @"Requested page number exceeds document length";
-                    break;
-                default:
-                    errorMessage = @"Unknown error parsing PDF";
-                    break;
-            }
-            
-            NSLog(@"PDF parsing error: %@", errorMessage);
-            result([FlutterError errorWithCode:@"PDF_PARSING_ERROR"
-                                      message:errorMessage
-                                      details:nil]);
-            return;
-        }
-        
-        if ([sourceImages count] == 0) {
-            result([FlutterError errorWithCode:@"PDF_EMPTY"
-                                      message:@"No pages in PDF or no pages in selected range"
-                                      details:nil]);
-            return;
-        }
-        
-        // Process each page
-        dispatch_group_t group = dispatch_group_create();
-        __block BOOL printSuccess = YES;
-        __block NSString *errorMessage = nil;
-        
-        for (UIImage *pageImage in sourceImages) {
-            dispatch_group_enter(group);
-            
-            NSMutableData *dataM = [[NSMutableData alloc] init];
-            
-            // Resize image to fit printer
-            UIImage *image = pageImage;
-            NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
-            
-            CGFloat imageRatio = image.size.width / image.size.height;
-            CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
-            
-            // If height exceeds printer height, scale down based on height
-            if (targetSize.height > printerHeight * scale) {
-                targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
-            }
-            
-            NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
-            
-            // Resize image to fit printer
-            UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
-            [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
-            UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
-            
-            if (resizedImage) {
-                image = resizedImage;
-                NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
-            }
-            
-            // Apply rotation if needed
-            if (rotationAngle != 0) {
-                // Convert degrees to radians
-                CGFloat radians = rotationAngle * M_PI / 180.0;
-                
-                // Calculate the size of the rotated image
-                CGRect rotatedRect = CGRectApplyAffineTransform(
-                    CGRectMake(0, 0, image.size.width, image.size.height),
-                    CGAffineTransformMakeRotation(radians));
-                
-                CGSize rotatedSize = rotatedRect.size;
-                
-                // Create a new context with the rotated size
-                UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
-                CGContextRef context = UIGraphicsGetCurrentContext();
-                
-                // Move to center and rotate
-                CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
-                CGContextRotateCTM(context, radians);
-                
-                // Draw the original image centered
-                [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
-                                            image.size.width, image.size.height)];
-                
-                // Get the rotated image
-                UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
-                UIGraphicsEndImageContext();
-                
-                if (rotatedImage) {
-                    image = rotatedImage;
-                    NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
-                }
-            }
-            
-            // Calculate centered position
-            int xPos = (printerWidth - image.size.width) / 2;
-            int yPos = (printerHeight - image.size.height) / 2;
-            
-            // Convert to mm for TSC
-            int xPosMM = xPos / 8;
-            int yPosMM = yPos / 8;
-            
-            NSLog(@"Printing with command type: %d, position: %d,%d", commandType, xPos, yPos);
-            
-            switch (commandType) {
-                // TSPL
-                case 0:
-                {
-                    int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
-                    int mmHeight = printerHeight / 8;
-                    
-                    [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
-                    [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
-                    [dataM appendData:[TSCCommand cls]];
-                    
-                    [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
-                    [dataM appendData:[TSCCommand print:1]];
-                }
-                    break;
-                    
-                // ZPL
-                case 1:
-                {
-                    [dataM appendData:[ZPLCommand XA]];
-                    [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
-                    
-                    [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
-                    [dataM appendData:[ZPLCommand XZ]];
-                }
-                    break;
-                    
-                // CPCL
-                case 2:
-                {
-                    [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
-                    
-                    [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
-                    [dataM appendData:[CPCLCommand form]];
-                    [dataM appendData:[CPCLCommand print]];
-                }
-                    break;
-                    
-                default:
-                    break;
-            }
-            
-            // Send the data to printer
-            [self.bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-                if (error) {
-                    printSuccess = NO;
-                    errorMessage = error.localizedDescription;
-                    NSLog(@"Print error: %@", error);
-                } else {
-                    NSLog(@"Page printed successfully");
-                }
-                dispatch_group_leave(group);
-            }];
-            
-            // Add a small delay between pages to avoid overwhelming the printer
-            [NSThread sleepForTimeInterval:0.5];
-        }
-        
-        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-            if (printSuccess) {
-                NSLog(@"All pages printed successfully");
-                result(@YES);
-            } else {
-                NSLog(@"Print failed: %@", errorMessage ?: @"Unknown error");
-                result([FlutterError errorWithCode:@"PRINT_ERROR"
-                                          message:errorMessage ?: @"Error printing PDF"
-                                          details:nil]);
-            }
-        });
-    }];
+   int startPage = startPageNum ? [startPageNum intValue] : 1;
+   int endPage = endPageNum ? [endPageNum intValue] : totalPages;
+   
+   // Validate page numbers
+   if (startPage < 1) startPage = 1;
+   if (startPage > totalPages) startPage = totalPages;
+   if (endPage > totalPages) endPage = totalPages;
+   if (endPage < startPage) endPage = startPage;
+   
+   // Password for protected PDFs (if provided)
+   NSString *password = args[@"password"];
+   
+   // Log the parsing attempt
+   NSLog(@"Attempting to parse PDF: %@, pages %d to %d of %d total pages", 
+         pdfPath, startPage, endPage, totalPages);
+   
+   // Parse PDF using LabelDocument
+   [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
+       NSLog(@"PDF parsing complete with error code: %ld, images count: %lu", 
+             (long)errorCode, (unsigned long)sourceImages.count);
+       
+       if (errorCode != DocSuccess) {
+           NSString *errorMessage;
+           switch (errorCode) {
+               case CGPDFDocumentRefNULL:
+                   errorMessage = @"Failed to create PDF document reference";
+                   break;
+               case PageNumberExceeds:
+                   errorMessage = @"Requested page number exceeds document length";
+                   break;
+               default:
+                   errorMessage = @"Unknown error parsing PDF";
+                   break;
+           }
+           
+           NSLog(@"PDF parsing error: %@", errorMessage);
+           result([FlutterError errorWithCode:@"PDF_PARSING_ERROR"
+                                     message:errorMessage
+                                     details:nil]);
+           return;
+       }
+       
+       if ([sourceImages count] == 0) {
+           result([FlutterError errorWithCode:@"PDF_EMPTY"
+                                     message:@"No pages in PDF or no pages in selected range"
+                                     details:nil]);
+           return;
+       }
+       
+       // Process each page
+       dispatch_group_t group = dispatch_group_create();
+       __block BOOL printSuccess = YES;
+       __block NSString *errorMessage = nil;
+       
+       for (UIImage *pageImage in sourceImages) {
+           dispatch_group_enter(group);
+           
+           NSMutableData *dataM = [[NSMutableData alloc] init];
+           
+           // Resize image to fit printer
+           UIImage *image = pageImage;
+           NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
+           
+           CGFloat imageRatio = image.size.width / image.size.height;
+           CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
+           
+           // If height exceeds printer height, scale down based on height
+           if (targetSize.height > printerHeight * scale) {
+               targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+           }
+           
+           NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
+           
+           // Resize image to fit printer
+           UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
+           [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
+           UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+           UIGraphicsEndImageContext();
+           
+           if (resizedImage) {
+               image = resizedImage;
+               NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
+           }
+           
+           // Apply rotation if needed
+           if (rotationAngle != 0) {
+               // Convert degrees to radians
+               CGFloat radians = rotationAngle * M_PI / 180.0;
+               
+               // Calculate the size of the rotated image
+               CGRect rotatedRect = CGRectApplyAffineTransform(
+                   CGRectMake(0, 0, image.size.width, image.size.height),
+                   CGAffineTransformMakeRotation(radians));
+               
+               CGSize rotatedSize = rotatedRect.size;
+               
+               // Create a new context with the rotated size
+               UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
+               CGContextRef context = UIGraphicsGetCurrentContext();
+               
+               // Move to center and rotate
+               CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
+               CGContextRotateCTM(context, radians);
+               
+               // Draw the original image centered
+               [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
+                                           image.size.width, image.size.height)];
+               
+               // Get the rotated image
+               UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
+               UIGraphicsEndImageContext();
+               
+               if (rotatedImage) {
+                   image = rotatedImage;
+                   NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
+               }
+           }
+           
+           // Calculate centered position
+           int xPos = (printerWidth - image.size.width) / 2;
+           int yPos = (printerHeight - image.size.height) / 2;
+           
+           // Convert to mm for TSC
+           int xPosMM = xPos / 8;
+           int yPosMM = yPos / 8;
+           
+           NSLog(@"Printing with command type: %d, position: %d,%d", commandType, xPos, yPos);
+           
+           switch (commandType) {
+               // TSPL
+               case 0:
+               {
+                   int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
+                   int mmHeight = printerHeight / 8;
+                   
+                   [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
+                   [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
+                   [dataM appendData:[TSCCommand cls]];
+                   
+                   [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
+                   [dataM appendData:[TSCCommand print:1]];
+               }
+                   break;
+                   
+               // ZPL
+               case 1:
+               {
+                   [dataM appendData:[ZPLCommand XA]];
+                   [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+                   
+                   [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
+                   [dataM appendData:[ZPLCommand XZ]];
+               }
+                   break;
+                   
+               // CPCL
+               case 2:
+               {
+                   [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
+                   
+                   [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
+                   [dataM appendData:[CPCLCommand form]];
+                   [dataM appendData:[CPCLCommand print]];
+               }
+                   break;
+                   
+               default:
+                   break;
+           }
+           
+           // Send the data to printer
+           [self.bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
+               if (error) {
+                   printSuccess = NO;
+                   errorMessage = error.localizedDescription;
+                   NSLog(@"Print error: %@", error);
+               } else {
+                   NSLog(@"Page printed successfully");
+               }
+               dispatch_group_leave(group);
+           }];
+           
+           // Add a small delay between pages to avoid overwhelming the printer
+           [NSThread sleepForTimeInterval:0.5];
+       }
+       
+       dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+           if (printSuccess) {
+               NSLog(@"All pages printed successfully");
+               result(@YES);
+           } else {
+               NSLog(@"Print failed: %@", errorMessage ?: @"Unknown error");
+               result([FlutterError errorWithCode:@"PRINT_ERROR"
+                                         message:errorMessage ?: @"Error printing PDF"
+                                         details:nil]);
+           }
+       });
+   }];
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
 - (void)getPrinterStatus:(FlutterResult)result {
-    if (!self.bleManager.isConnecting) {
-        result([FlutterError errorWithCode:@"NOT_CONNECTED"
-                                   message:@"Printer not connected"
-                                   details:nil]);
-        return;
-    }
-    
-    [self.bleManager printerStatus:^(NSData *status) {
-        unsigned statusCode = 0;
-        if (status.length == 1) {
-            const Byte *byte = (Byte *)[status bytes];
-            statusCode = byte[0];
-        } else if (status.length == 2) {
-            const Byte *byte = (Byte *)[status bytes];
-            statusCode = byte[1];
-        }
-        
-        NSString *statusMessage = @"Unknown status";
-        
-        if (statusCode == 0x00) {
-            statusMessage = @"Ready";
-        } else if (statusCode == 0x01) {
-            statusMessage = @"Cover opened";
-        } else if (statusCode == 0x02) {
-            statusMessage = @"Paper jam";
-        } else if (statusCode == 0x03) {
-            statusMessage = @"Cover opened and paper jam";
-        } else if (statusCode == 0x04) {
-            statusMessage = @"Paper end";
-        } else if (statusCode == 0x05) {
-            statusMessage = @"Cover opened and Paper end";
-        } else if (statusCode == 0x08) {
-            statusMessage = @"No Ribbon";
-        } else if (statusCode == 0x09) {
-            statusMessage = @"Cover opened and no Ribbon";
-        } else if (statusCode == 0x10) {
-            statusMessage = @"Pause";
-        } else if (statusCode == 0x20) {
-            statusMessage = @"Printing";
-        }
-        
-        result(@{
-            @"code": @(statusCode),
-            @"message": statusMessage
-        });
-    }];
+   if (!self.bleManager.isConnecting) {
+       result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                  message:@"Printer not connected"
+                                  details:nil]);
+       return;
+   }
+   
+   [self.bleManager printerStatus:^(NSData *status) {
+       unsigned statusCode = 0;
+       if (status.length == 1) {
+           const Byte *byte = (Byte *)[status bytes];
+           statusCode = byte[0];
+       } else if (status.length == 2) {
+           const Byte *byte = (Byte *)[status bytes];
+           statusCode = byte[1];
+       }
+       
+       NSString *statusMessage = @"Unknown status";
+       
+       if (statusCode == 0x00) {
+           statusMessage = @"Ready";
+       } else if (statusCode == 0x01) {
+           statusMessage = @"Cover opened";
+       } else if (statusCode == 0x02) {
+           statusMessage = @"Paper jam";
+       } else if (statusCode == 0x03) {
+           statusMessage = @"Cover opened and paper jam";
+       } else if (statusCode == 0x04) {
+           statusMessage = @"Paper end";
+       } else if (statusCode == 0x05) {
+           statusMessage = @"Cover opened and Paper end";
+       } else if (statusCode == 0x08) {
+           statusMessage = @"No Ribbon";
+       } else if (statusCode == 0x09) {
+           statusMessage = @"Cover opened and no Ribbon";
+       } else if (statusCode == 0x10) {
+           statusMessage = @"Pause";
+       } else if (statusCode == 0x20) {
+           statusMessage = @"Printing";
+       }
+       
+       result(@{
+           @"code": @(statusCode),
+           @"message": statusMessage
+       });
+   }];
 }
 
 #pragma mark - Helper Methods
 
 - (void)sendDataToPrinter:(NSMutableData *)data result:(FlutterResult)result {
-    __weak typeof(self) weakSelf = self;
-    [self.bleManager writeCommandWithData:data writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-        if (error) {
-            result([FlutterError errorWithCode:@"PRINT_ERROR"
-                                       message:error.localizedDescription
-                                       details:nil]);
-            return;
-        }
-        result(@YES);
-    }];
+   __weak typeof(self) weakSelf = self;
+   [self.bleManager writeCommandWithData:data writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
+       if (error) {
+           result([FlutterError errorWithCode:@"PRINT_ERROR"
+                                      message:error.localizedDescription
+                                      details:nil]);
+           return;
+       }
+       result(@YES);
+   }];
 }
 
 #pragma mark - TSCBLEManagerDelegate
 
 - (void)TSCbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
-    // Update local copies
-    [self.peripherals removeAllObjects];
-    [self.peripherals addObjectsFromArray:peripherals];
-    
-    [self.rssiList removeAllObjects];
-    [self.rssiList addObjectsFromArray:rssiList];
-    
-    // Convert peripherals to map for Flutter
-    NSMutableArray *deviceList = [NSMutableArray array];
-    
-    for (int i = 0; i < [peripherals count]; i++) {
-        CBPeripheral *peripheral = peripherals[i];
-        NSNumber *rssi = rssiList[i];
-        
-        NSMutableDictionary *deviceInfo = [NSMutableDictionary dictionary];
-        deviceInfo[@"name"] = peripheral.name ?: @"Unknown";
-        deviceInfo[@"address"] = peripheral.identifier.UUIDString;
-        deviceInfo[@"rssi"] = rssi;
-        
-        [deviceList addObject:deviceInfo];
-    }
-    
-    [self.channel invokeMethod:@"onScanResults" arguments:deviceList];
+   // Update local copies
+   [self.peripherals removeAllObjects];
+   [self.peripherals addObjectsFromArray:peripherals];
+   
+   [self.rssiList removeAllObjects];
+   [self.rssiList addObjectsFromArray:rssiList];
+   
+   // Convert peripherals to map for Flutter
+   NSMutableArray *deviceList = [NSMutableArray array];
+   
+   for (int i = 0; i < [peripherals count]; i++) {
+       CBPeripheral *peripheral = peripherals[i];
+       NSNumber *rssi = rssiList[i];
+       
+       NSMutableDictionary *deviceInfo = [NSMutableDictionary dictionary];
+       deviceInfo[@"name"] = peripheral.name ?: @"Unknown";
+       deviceInfo[@"address"] = peripheral.identifier.UUIDString;
+       deviceInfo[@"rssi"] = rssi;
+       
+       [deviceList addObject:deviceInfo];
+   }
+   
+   [self.channel invokeMethod:@"onScanResults" arguments:deviceList];
 }
 
 - (void)TSCbleConnectPeripheral:(CBPeripheral *)peripheral {
-    NSDictionary *deviceInfo = @{
-        @"name": peripheral.name ?: @"Unknown",
-        @"address": peripheral.identifier.UUIDString,
-        @"status": @"connected"
-    };
-    
-    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
+   NSDictionary *deviceInfo = @{
+       @"name": peripheral.name ?: @"Unknown",
+       @"address": peripheral.identifier.UUIDString,
+       @"status": @"connected"
+   };
+   
+   [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
 }
 
 - (void)TSCbleDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
-    NSDictionary *deviceInfo = @{
-        @"name": peripheral.name ?: @"Unknown",
-        @"address": peripheral.identifier.UUIDString,
-        @"status": @"disconnected",
-        @"error": error ? error.localizedDescription : @""
-    };
-    
-    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
+   NSDictionary *deviceInfo = @{
+       @"name": peripheral.name ?: @"Unknown",
+       @"address": peripheral.identifier.UUIDString,
+       @"status": @"disconnected",
+       @"error": error ? error.localizedDescription : @""
+   };
+   
+   [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
 }
 
 - (void)TSCbleFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
-    NSDictionary *deviceInfo = @{
-        @"name": peripheral.name ?: @"Unknown",
-        @"address": peripheral.identifier.UUIDString,
-        @"status": @"failed",
-        @"error": error ? error.localizedDescription : @"Failed to connect"
-    };
-    
-    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
+   NSDictionary *deviceInfo = @{
+       @"name": peripheral.name ?: @"Unknown",
+       @"address": peripheral.identifier.UUIDString,
+       @"status": @"failed",
+       @"error": error ? error.localizedDescription : @"Failed to connect"
+   };
+   
+   [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
 }
 
 @end

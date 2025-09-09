@@ -12,12 +12,17 @@ A new Flutter plugin project.
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
 
-  # ⚡️ 只保留这一组
   s.source_files = 'Classes/**/*.{h,m}'
   s.public_header_files = 'Classes/PrinterSDK/*.h'
   s.vendored_libraries = 'Classes/PrinterSDK/*.a'
-  # s.frameworks = 'UIKit', 'CoreBluetooth' # 如果需要蓝牙，取消注释
   s.static_framework = true
+  # s.vendored_libraries = File.expand_path('Classes/PrinterSDK/*.a', __dir__)
+  s.pod_target_xcconfig = {
+  'DEFINES_MODULE' => 'YES',
+  'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+  'ENABLE_BITCODE' => 'NO'
+}
+
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
 end

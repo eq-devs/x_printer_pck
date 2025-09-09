@@ -81,26 +81,43 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
   Future<bool> printImage(
     Uint8List imageData, {
     int commandType = 0,
-    int? printerWidth,
-    int? printerHeight,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
     int rotation = 0,
-    double scale = 0.9,
+    double scale = 0.91,
   }) {
     throw UnimplementedError('printImage() has not been implemented.');
   }
 
+  /// Print image from base64 string with advanced configuration.
+  Future<bool> printImageBase64(
+    String base64String, {
+    int commandType = 0,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
+    int rotation = 0,
+    double scale = 0.91,
+    double quality = 1.0,
+    String alignment = 'center',
+    int? x,
+    int? y,
+  }) {
+    throw UnimplementedError('printImageBase64() has not been implemented.');
+  }
+
+  /// Print PDF document.
   Future<bool> printPDF(
     String pdfPath, {
     int commandType = 0,
-    int? printerWidth,
-    int? printerHeight,
+    int printerWidth = 350, // Updated default
+    int printerHeight = 350, // Updated default
     int rotation = 0,
-    double scale = 0.9,
+    double scale = 0.91,
     int? startPage,
     int? endPage,
     String? password,
   }) {
-    throw UnimplementedError('printImage() has not been implemented.');
+    throw UnimplementedError('printPDF() has not been implemented.');
   }
 
   /// Get printer status.
