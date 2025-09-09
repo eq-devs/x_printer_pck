@@ -1,4 +1,8 @@
- 
+//
+//  XPrinterPckPlugin.m
+//  Flutter POS Printer Plugin
+//
+
 #import "XPrinterPckPlugin.h"
 
 // #import "PrinterSDK/Headers/POSBLEManager.h"
@@ -7,20 +11,10 @@
 #import "TSCBLEManager.h"
 #import "LabelDocument.h"
 
-@interface XPrinterPckPlugin()
-@property (nonatomic, strong) FlutterMethodChannel* channel;
-@property (nonatomic, strong) TSCBLEManager *bleManager;
-@property (nonatomic, strong) NSMutableArray *peripherals;
-@property (nonatomic, strong) NSMutableArray *rssiList;
-@property (nonatomic, assign) BOOL isInitialized;
-@property (nonatomic, assign) BOOL isReconnecting;
-@property (nonatomic, strong) NSTimer *connectionWatchdogTimer;
-@property (nonatomic, strong) NSMutableArray *printQueue;
-@property (nonatomic, assign) BOOL isPrinting;
-@property (nonatomic, strong) dispatch_queue_t printQueueDispatchQueue;
-@end
-
 @implementation XPrinterPckPlugin
+
+// Add initialization flag
+@synthesize isInitialized = _isInitialized;
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     FlutterMethodChannel* channel = [FlutterMethodChannel
@@ -34,51 +28,24 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        self.isInitialized = NO;
-        self.isReconnecting = NO;
-    }
-    return self;
-}
-
-- (void)initializePlugin:(FlutterResult)result {
-    @try {
-        // Initialize properties
         self.peripherals = [NSMutableArray array];
         self.rssiList = [NSMutableArray array];
         self.bleManager = [TSCBLEManager sharedInstance];
         self.bleManager.delegate = self;
-        
-        // Initialize print queue
-        self.printQueue = [NSMutableArray array];
-        self.isPrinting = NO;
-        self.printQueueDispatchQueue = dispatch_queue_create("com.xprinter.printqueue", DISPATCH_QUEUE_SERIAL);
-        
-        // Mark as initialized
-        self.isInitialized = YES;
-        
-        // Return success
-        result(@YES);
-    } @catch (NSException *exception) {
-        // Handle any errors during initialization
-        self.isInitialized = NO;
-        result([FlutterError errorWithCode:@"INIT_FAILED"
-                                  message:[NSString stringWithFormat:@"Initialization failed: %@", exception.reason]
-                                  details:nil]);
+        _isInitialized = NO; // Initialize as not initialized
     }
+    return self;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
-    // Check if initialized except for initialize method
-    if (!self.isInitialized && ![@"initialize" isEqualToString:call.method]) {
-        result([FlutterError errorWithCode:@"NOT_INITIALIZED"
-                                   message:@"Plugin not initialized. Call initialize() first."
-                                   details:nil]);
-        return;
-    }
+    NSLog(@"📱 iOS: Received method call: %@", call.method);
     
+    // Add initialization method
     if ([@"initialize" isEqualToString:call.method]) {
+        NSLog(@"🔄 iOS: Calling initializePlugin");
         [self initializePlugin:result];
     } else if ([@"scanDevices" isEqualToString:call.method]) {
+        NSLog(@"🔍 iOS: Calling startScanDevices");
         [self startScanDevices:result];
     } else if ([@"stopScan" isEqualToString:call.method]) {
         [self stopScan:result];
@@ -100,16 +67,70 @@
         [self getPrinterStatus:result];
     } else if ([@"printPDF" isEqualToString:call.method]) {
         [self printPDF:call.arguments result:result];
-    }
-    
-    else {
+    } else {
+        NSLog(@"❌ iOS: FlutterMethodNotImplemented for method: %@", call.method);
         result(FlutterMethodNotImplemented);
     }
+}
+
+
+#pragma mark - Initialization
+
+
+
+// Also update the initializePlugin method with more logging:
+- (void)initializePlugin:(FlutterResult)result {
+    NSLog(@"🔄 iOS: initializePlugin called");
+    
+    @try {
+        // Initialize the BLE manager
+        if (self.bleManager == nil) {
+            NSLog(@"📱 iOS: Creating TSCBLEManager instance");
+            self.bleManager = [TSCBLEManager sharedInstance];
+            self.bleManager.delegate = self;
+        } else {
+            NSLog(@"📱 iOS: TSCBLEManager already exists");
+        }
+        
+        // Initialize arrays
+        if (self.peripherals == nil) {
+            NSLog(@"📱 iOS: Creating peripherals array");
+            self.peripherals = [NSMutableArray array];
+        }
+        if (self.rssiList == nil) {
+            NSLog(@"📱 iOS: Creating rssiList array");
+            self.rssiList = [NSMutableArray array];
+        }
+        
+        // Mark as initialized
+        _isInitialized = YES;
+        
+        NSLog(@"✅ iOS: XPrinterPck plugin initialized successfully");
+        result(@YES);
+    } @catch (NSException *exception) {
+        NSLog(@"❌ iOS: Error initializing plugin: %@", exception.description);
+        result([FlutterError errorWithCode:@"INITIALIZATION_ERROR"
+                                   message:@"Failed to initialize printer plugin"
+                                   details:exception.description]);
+    }
+}
+
+// Add initialization check helper
+- (BOOL)checkInitialization:(FlutterResult)result {
+    if (!_isInitialized) {
+        result([FlutterError errorWithCode:@"NOT_INITIALIZED"
+                                   message:@"Plugin not initialized. Call XPrinterPck.initialize() first."
+                                   details:nil]);
+        return NO;
+    }
+    return YES;
 }
 
 #pragma mark - Device Methods
 
 - (void)startScanDevices:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     [self.peripherals removeAllObjects];
     [self.rssiList removeAllObjects];
     [self.bleManager startScan];
@@ -117,140 +138,41 @@
 }
 
 - (void)stopScan:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     [self.bleManager stopScan];
     result(@YES);
 }
 
-- (void)resetBLEManager:(FlutterResult)result {
-    // Cancel any pending operations
-    [self cancelConnectionWatchdogTimer];
-    
-    // Disconnect if connected
-    if (self.bleManager.isConnecting) {
-        [self.bleManager disconnectRootPeripheral];
-    }
-    
-    // Wait a bit before recreating the manager
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        // Create new instance
-        self.bleManager = [TSCBLEManager sharedInstance];
-        self.bleManager.delegate = self;
-        self.isReconnecting = NO;
-        self.isPrinting = NO;
-        [self.printQueue removeAllObjects];
-        
-        result(@YES);
-    });
-}
-
 - (void)connectDevice:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     NSDictionary *args = arguments;
     NSInteger index = [args[@"index"] integerValue];
     
-    // Validate index
-    if (index < 0 || index >= [self.peripherals count]) {
+    if (index >= 0 && index < [self.peripherals count]) {
+        CBPeripheral *peripheral = self.peripherals[index];
+        [self.bleManager connectDevice:peripheral];
+        result(@YES);
+    } else {
         result([FlutterError errorWithCode:@"INVALID_INDEX"
                                    message:@"Invalid device index"
                                    details:nil]);
-        return;
-    }
-    
-    // Keep a reference to the result callback
-    FlutterResult connectionResult = [result copy];
-    
-    // Set reconnecting flag
-    self.isReconnecting = self.bleManager.isConnecting;
-    
-    // If already connected, disconnect first and then reconnect
-    if (self.bleManager.isConnecting) {
-        NSLog(@"Already connected, will disconnect and reconnect");
-        
-        // Create a connection watchdog timer
-        [self cancelConnectionWatchdogTimer];
-        self.connectionWatchdogTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
-                                                                       target:self
-                                                                     selector:@selector(handleConnectionTimeout:)
-                                                                     userInfo:nil
-                                                                      repeats:NO];
-        
-        // Perform disconnect
-        [self.bleManager disconnectRootPeripheral];
-        
-        // Wait for disconnection callback before connecting again
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self cancelConnectionWatchdogTimer];
-            
-            // Reset BLE manager if needed
-            if (self.isReconnecting) {
-                NSLog(@"Forcing BLE manager reset");
-                self.bleManager = [TSCBLEManager sharedInstance];
-                self.bleManager.delegate = self;
-                self.isReconnecting = NO;
-            }
-            
-            // Connect to new device
-            CBPeripheral *peripheral = self.peripherals[index];
-            [self.bleManager connectDevice:peripheral];
-            connectionResult(@YES);
-        });
-    } else {
-        // Direct connection if not already connected
-        CBPeripheral *peripheral = self.peripherals[index];
-        [self.bleManager connectDevice:peripheral];
-        connectionResult(@YES);
-    }
-}
-
-- (void)handleConnectionTimeout:(NSTimer *)timer {
-    NSLog(@"Connection timeout - forcing reset");
-    
-    // Force BLE manager reset
-    self.bleManager = [TSCBLEManager sharedInstance];
-    self.bleManager.delegate = self;
-    self.isReconnecting = NO;
-    
-    // Notify Flutter about the timeout
-    NSDictionary *deviceInfo = @{
-        @"name": @"Unknown",
-        @"address": @"Unknown",
-        @"status": @"timeout",
-        @"error": @"Connection timeout occurred"
-    };
-    
-    [self.channel invokeMethod:@"onConnectionChanged" arguments:deviceInfo];
-}
-
-- (void)cancelConnectionWatchdogTimer {
-    if (self.connectionWatchdogTimer) {
-        [self.connectionWatchdogTimer invalidate];
-        self.connectionWatchdogTimer = nil;
     }
 }
 
 - (void)disconnectDevice:(FlutterResult)result {
-    [self cancelConnectionWatchdogTimer];
+    if (![self checkInitialization:result]) return;
     
-    // Clear print queue on disconnect
-    dispatch_async(self.printQueueDispatchQueue, ^{
-        [self.printQueue removeAllObjects];
-        self.isPrinting = NO;
-    });
-    
-    // Perform disconnect
     [self.bleManager disconnectRootPeripheral];
-    
-    // Reset state
-    self.isReconnecting = NO;
-    
-    // Additional cleanup - may need to be adjusted based on TSCBLEManager implementation
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        result(@YES);
-    });
+    result(@YES);
 }
 
 #pragma mark - Printing Methods
 
 - (void)printText:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
                                    message:@"Printer not connected"
@@ -293,6 +215,8 @@
 }
 
 - (void)printBarcode:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
                                    message:@"Printer not connected"
@@ -326,6 +250,8 @@
 }
 
 - (void)printQRCode:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
                                    message:@"Printer not connected"
@@ -358,6 +284,8 @@
 }
 
 - (void)printImage:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
                                   message:@"Printer not connected"
@@ -395,16 +323,16 @@
     // Get printer parameters
     NSNumber *printerWidthNum = args[@"printerWidth"];
     NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384;
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600;
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
     
     // Get rotation angle from arguments (default to 0 if not provided)
     NSNumber *rotationAngleNum = args[@"rotation"];
     int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
     
-    // Get scale (default to 0.9 if not provided)
+    // Get scale (default to 0.91 if not provided)
     NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9;
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
     
     // Calculate target size based on printer width and scale
     CGFloat imageRatio = image.size.width / image.size.height;
@@ -499,20 +427,310 @@
     [self sendDataToPrinter:dataM result:result];
 }
 
+// NEW BASE64 PRINT METHOD
+- (void)printImageBase64:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                  message:@"Printer not connected"
+                                  details:nil]);
+        return;
+    }
+    
+    NSDictionary *args = arguments;
+    NSString *base64String = args[@"base64String"];
+    
+    if (!base64String || [base64String length] == 0) {
+        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                  message:@"Base64 string is required"
+                                  details:nil]);
+        return;
+    }
+    
+    // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+    if ([base64String containsString:@","]) {
+        NSArray *components = [base64String componentsSeparatedByString:@","];
+        if ([components count] > 1) {
+            base64String = [components lastObject];
+        }
+    }
+    
+    // Decode Base64 string to NSData
+    NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    
+    if (!imageData) {
+        NSLog(@"Failed to decode Base64 string");
+        result([FlutterError errorWithCode:@"INVALID_BASE64"
+                                  message:@"Invalid Base64 string"
+                                  details:nil]);
+        return;
+    }
+    
+    // Convert NSData to UIImage
+    UIImage *image = [UIImage imageWithData:imageData];
+    
+    if (!image) {
+        NSLog(@"Failed to create UIImage from decoded data of length: %lu", (unsigned long)imageData.length);
+        result([FlutterError errorWithCode:@"INVALID_IMAGE"
+                                  message:@"Invalid image data in Base64 string"
+                                  details:nil]);
+        return;
+    }
+    
+    NSLog(@"Successfully decoded Base64 image: %.0f x %.0f", image.size.width, image.size.height);
+    
+    // Get configuration parameters
+    NSNumber *commandTypeNum = args[@"commandType"];
+    int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
+    
+    NSNumber *printerWidthNum = args[@"printerWidth"];
+    NSNumber *printerHeightNum = args[@"printerHeight"];
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
+    
+    NSNumber *rotationAngleNum = args[@"rotation"];
+    int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
+    
+    NSNumber *scaleNum = args[@"scale"];
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
+    
+    // Quality settings
+    NSNumber *qualityNum = args[@"quality"];
+    CGFloat quality = qualityNum ? [qualityNum floatValue] : 1.0;
+    
+    // Alignment settings
+    NSString *alignmentStr = args[@"alignment"] ?: @"center";
+    
+    // Custom position (used when alignment is "custom")
+    NSNumber *customXNum = args[@"x"];
+    NSNumber *customYNum = args[@"y"];
+    int customX = customXNum ? [customXNum intValue] : 0;
+    int customY = customYNum ? [customYNum intValue] : 0;
+    
+    // Process image with configuration
+    UIImage *processedImage = [self processImage:image 
+                                    printerWidth:printerWidth 
+                                   printerHeight:printerHeight 
+                                           scale:scale 
+                                        rotation:rotationAngle 
+                                         quality:quality];
+    
+    if (!processedImage) {
+        result([FlutterError errorWithCode:@"IMAGE_PROCESSING_ERROR"
+                                  message:@"Failed to process image"
+                                  details:nil]);
+        return;
+    }
+    
+    // Calculate position based on alignment
+    CGPoint position = [self calculatePosition:processedImage.size 
+                                  printerWidth:printerWidth 
+                                 printerHeight:printerHeight 
+                                     alignment:alignmentStr 
+                                       customX:customX 
+                                       customY:customY];
+    
+    // Generate printer commands
+    NSMutableData *dataM = [self generatePrintCommands:processedImage 
+                                               position:position 
+                                           commandType:commandType 
+                                          printerWidth:printerWidth 
+                                         printerHeight:printerHeight];
+    
+    if (!dataM) {
+        result([FlutterError errorWithCode:@"COMMAND_GENERATION_ERROR"
+                                  message:@"Failed to generate printer commands"
+                                  details:nil]);
+        return;
+    }
+    
+    // Send to printer
+    [self sendDataToPrinter:dataM result:result];
+}
 
+#pragma mark - Image Processing Helpers
 
+- (UIImage *)processImage:(UIImage *)originalImage 
+             printerWidth:(int)printerWidth 
+            printerHeight:(int)printerHeight 
+                    scale:(CGFloat)scale 
+                 rotation:(int)rotationAngle 
+                  quality:(CGFloat)quality {
+    
+    UIImage *image = originalImage;
+    NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
+    
+    // 1. Calculate target size based on printer width and scale
+    CGFloat imageRatio = image.size.width / image.size.height;
+    CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
+    
+    // If height exceeds printer height, scale down based on height
+    if (targetSize.height > printerHeight * scale) {
+        targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+    }
+    
+    NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
+    
+    // 2. Resize image with quality settings
+    UIGraphicsBeginImageContextWithOptions(targetSize, NO, quality);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    
+    // Set interpolation quality
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGContextSetShouldAntialias(context, YES);
+    CGContextSetAllowsAntialiasing(context, YES);
+    
+    [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
+    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    if (resizedImage) {
+        image = resizedImage;
+        NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
+    }
+    
+    // 3. Apply rotation if needed
+    if (rotationAngle != 0) {
+        image = [self rotateImage:image byAngle:rotationAngle];
+        NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
+    }
+    
+    return image;
+}
 
+- (UIImage *)rotateImage:(UIImage *)image byAngle:(int)degrees {
+    // Convert degrees to radians
+    CGFloat radians = degrees * M_PI / 180.0;
+    
+    // Calculate the size of the rotated image
+    CGRect rotatedRect = CGRectApplyAffineTransform(
+        CGRectMake(0, 0, image.size.width, image.size.height),
+        CGAffineTransformMakeRotation(radians));
+    
+    CGSize rotatedSize = rotatedRect.size;
+    
+    // Create a new context with the rotated size
+    UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    
+    // Move to center and rotate
+    CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
+    CGContextRotateCTM(context, radians);
+    
+    // Draw the original image centered
+    [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
+                                image.size.width, image.size.height)];
+    
+    // Get the rotated image
+    UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    return rotatedImage;
+}
 
+- (CGPoint)calculatePosition:(CGSize)imageSize 
+                printerWidth:(int)printerWidth 
+               printerHeight:(int)printerHeight 
+                   alignment:(NSString *)alignment 
+                     customX:(int)customX 
+                     customY:(int)customY {
+    
+    CGPoint position = CGPointZero;
+    
+    if ([alignment isEqualToString:@"center"]) {
+        position.x = (printerWidth - imageSize.width) / 2;
+        position.y = (printerHeight - imageSize.height) / 2;
+    } else if ([alignment isEqualToString:@"topLeft"]) {
+        position.x = 0;
+        position.y = 0;
+    } else if ([alignment isEqualToString:@"topRight"]) {
+        position.x = printerWidth - imageSize.width;
+        position.y = 0;
+    } else if ([alignment isEqualToString:@"bottomLeft"]) {
+        position.x = 0;
+        position.y = printerHeight - imageSize.height;
+    } else if ([alignment isEqualToString:@"bottomRight"]) {
+        position.x = printerWidth - imageSize.width;
+        position.y = printerHeight - imageSize.height;
+    } else if ([alignment isEqualToString:@"custom"]) {
+        position.x = customX;
+        position.y = customY;
+    } else {
+        // Default to center
+        position.x = (printerWidth - imageSize.width) / 2;
+        position.y = (printerHeight - imageSize.height) / 2;
+    }
+    
+    // Ensure position is within bounds
+    position.x = MAX(0, MIN(position.x, printerWidth - imageSize.width));
+    position.y = MAX(0, MIN(position.y, printerHeight - imageSize.height));
+    
+    return position;
+}
 
-
-
-
-
-
-
-
+- (NSMutableData *)generatePrintCommands:(UIImage *)image 
+                                position:(CGPoint)position 
+                            commandType:(int)commandType 
+                           printerWidth:(int)printerWidth 
+                          printerHeight:(int)printerHeight {
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    
+    int xPos = (int)position.x;
+    int yPos = (int)position.y;
+    
+    switch (commandType) {
+        // TSPL
+        case 0:
+        {
+            int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
+            int mmHeight = printerHeight / 8;
+            int xPosMM = xPos / 8;
+            int yPosMM = yPos / 8;
+            
+            [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
+            [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
+            [dataM appendData:[TSCCommand cls]];
+            
+            [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
+            [dataM appendData:[TSCCommand print:1]];
+        }
+            break;
+            
+        // ZPL
+        case 1:
+        {
+            [dataM appendData:[ZPLCommand XA]];
+            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+            
+            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[ZPLCommand XZ]];
+        }
+            break;
+            
+        // CPCL
+        case 2:
+        {
+            [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
+            
+            [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
+            [dataM appendData:[CPCLCommand form]];
+            [dataM appendData:[CPCLCommand print]];
+        }
+            break;
+            
+        default:
+            NSLog(@"Unknown command type: %d", commandType);
+            return nil;
+    }
+    
+    return dataM;
+}
 
 - (void)printPDF:(id)arguments result:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
                                   message:@"Printer not connected"
@@ -559,23 +777,22 @@
     // Get printer parameters
     NSNumber *printerWidthNum = args[@"printerWidth"];
     NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 384;
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 600;
+    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
+    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
     
     // Get rotation angle from arguments (default to 0 if not provided)
     NSNumber *rotationAngleNum = args[@"rotation"];
     int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
     
-    // Get scale (default to 0.9 if not provided)
+    // Get scale (default to 0.91 if not provided)
     NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.9;
+    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
     
     // Get specific page to print (if specified)
     NSNumber *startPageNum = args[@"startPage"];
-    // NSNumber *endPageNum
     NSNumber *endPageNum = args[@"endPage"];
-    int startPage = startPageNum ? [startPageNum intValue] : 1; // Default to first page
-    int endPage = endPageNum ? [endPageNum intValue] : totalPages; // Default to all pages
+    int startPage = startPageNum ? [startPageNum intValue] : 1;
+    int endPage = endPageNum ? [endPageNum intValue] : totalPages;
     
     // Validate page numbers
     if (startPage < 1) startPage = 1;
@@ -775,52 +992,54 @@
 }
 
 - (void)getPrinterStatus:(FlutterResult)result {
-   if (!self.bleManager.isConnecting) {
-       result([FlutterError errorWithCode:@"NOT_CONNECTED"
-                                  message:@"Printer not connected"
-                                  details:nil]);
-       return;
-   }
-   
-   [self.bleManager printerStatus:^(NSData *status) {
-       unsigned statusCode = 0;
-       if (status.length == 1) {
-           const Byte *byte = (Byte *)[status bytes];
-           statusCode = byte[0];
-       } else if (status.length == 2) {
-           const Byte *byte = (Byte *)[status bytes];
-           statusCode = byte[1];
-       }
-       
-       NSString *statusMessage = @"Unknown status";
-       
-       if (statusCode == 0x00) {
-           statusMessage = @"Ready";
-       } else if (statusCode == 0x01) {
-           statusMessage = @"Cover opened";
-       } else if (statusCode == 0x02) {
-           statusMessage = @"Paper jam";
-       } else if (statusCode == 0x03) {
-           statusMessage = @"Cover opened and paper jam";
-       } else if (statusCode == 0x04) {
-           statusMessage = @"Paper end";
-       } else if (statusCode == 0x05) {
-           statusMessage = @"Cover opened and Paper end";
-       } else if (statusCode == 0x08) {
-           statusMessage = @"No Ribbon";
-       } else if (statusCode == 0x09) {
-           statusMessage = @"Cover opened and no Ribbon";
-       } else if (statusCode == 0x10) {
-           statusMessage = @"Pause";
-       } else if (statusCode == 0x20) {
-           statusMessage = @"Printing";
-       }
-       
-       result(@{
-           @"code": @(statusCode),
-           @"message": statusMessage
-       });
-   }];
+    if (![self checkInitialization:result]) return;
+    
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                   message:@"Printer not connected"
+                                   details:nil]);
+        return;
+    }
+    
+    [self.bleManager printerStatus:^(NSData *status) {
+        unsigned statusCode = 0;
+        if (status.length == 1) {
+            const Byte *byte = (Byte *)[status bytes];
+            statusCode = byte[0];
+        } else if (status.length == 2) {
+            const Byte *byte = (Byte *)[status bytes];
+            statusCode = byte[1];
+        }
+        
+        NSString *statusMessage = @"Unknown status";
+        
+        if (statusCode == 0x00) {
+            statusMessage = @"Ready";
+        } else if (statusCode == 0x01) {
+            statusMessage = @"Cover opened";
+        } else if (statusCode == 0x02) {
+            statusMessage = @"Paper jam";
+        } else if (statusCode == 0x03) {
+            statusMessage = @"Cover opened and paper jam";
+        } else if (statusCode == 0x04) {
+            statusMessage = @"Paper end";
+        } else if (statusCode == 0x05) {
+            statusMessage = @"Cover opened and Paper end";
+        } else if (statusCode == 0x08) {
+            statusMessage = @"No Ribbon";
+        } else if (statusCode == 0x09) {
+            statusMessage = @"Cover opened and no Ribbon";
+        } else if (statusCode == 0x10) {
+            statusMessage = @"Pause";
+        } else if (statusCode == 0x20) {
+            statusMessage = @"Printing";
+        }
+        
+        result(@{
+            @"code": @(statusCode),
+            @"message": statusMessage
+        });
+    }];
 }
 
 #pragma mark - Helper Methods
@@ -841,29 +1060,29 @@
 #pragma mark - TSCBLEManagerDelegate
 
 - (void)TSCbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
-   // Update local copies
-   [self.peripherals removeAllObjects];
-   [self.peripherals addObjectsFromArray:peripherals];
-   
-   [self.rssiList removeAllObjects];
-   [self.rssiList addObjectsFromArray:rssiList];
-   
-   // Convert peripherals to map for Flutter
-   NSMutableArray *deviceList = [NSMutableArray array];
-   
-   for (int i = 0; i < [peripherals count]; i++) {
-       CBPeripheral *peripheral = peripherals[i];
-       NSNumber *rssi = rssiList[i];
-       
-       NSMutableDictionary *deviceInfo = [NSMutableDictionary dictionary];
-       deviceInfo[@"name"] = peripheral.name ?: @"Unknown";
-       deviceInfo[@"address"] = peripheral.identifier.UUIDString;
-       deviceInfo[@"rssi"] = rssi;
-       
-       [deviceList addObject:deviceInfo];
-   }
-   
-   [self.channel invokeMethod:@"onScanResults" arguments:deviceList];
+    // Update local copies
+    [self.peripherals removeAllObjects];
+    [self.peripherals addObjectsFromArray:peripherals];
+    
+    [self.rssiList removeAllObjects];
+    [self.rssiList addObjectsFromArray:rssiList];
+    
+    // Convert peripherals to map for Flutter
+    NSMutableArray *deviceList = [NSMutableArray array];
+    
+    for (int i = 0; i < [peripherals count]; i++) {
+        CBPeripheral *peripheral = peripherals[i];
+        NSNumber *rssi = rssiList[i];
+        
+        NSMutableDictionary *deviceInfo = [NSMutableDictionary dictionary];
+        deviceInfo[@"name"] = peripheral.name ?: @"Unknown";
+        deviceInfo[@"address"] = peripheral.identifier.UUIDString;
+        deviceInfo[@"rssi"] = rssi;
+        
+        [deviceList addObject:deviceInfo];
+    }
+    
+    [self.channel invokeMethod:@"onScanResults" arguments:deviceList];
 }
 
 - (void)TSCbleConnectPeripheral:(CBPeripheral *)peripheral {

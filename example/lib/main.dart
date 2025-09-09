@@ -1,10 +1,7 @@
-import 'dart:io';
-import 'dart:typed_data';
+import 'dart:developer';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:x_printer_pck/x_printer_pck.dart';
 import 'package:x_printer_pck/x_printer_pck_method_channel.dart';
 
@@ -333,7 +330,16 @@ class _Base64PrinterPageState extends State<Base64PrinterPage> {
   }
 
   @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+
+    log(_statusMessage);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    XPrinterPck.initialize();
+
     final bool isConnected = _connectionStatus?.isConnected ?? false;
 
     return Scaffold(
