@@ -31,6 +31,10 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
     throw UnimplementedError('initialize() has not been implemented.');
   }
 
+  Future<bool> init() {
+    throw UnimplementedError('initialize() has not been implemented.');
+  }
+
   /// Start scanning for Bluetooth devices.
   Future<bool> scanDevices() {
     throw UnimplementedError('scanDevices() has not been implemented.');

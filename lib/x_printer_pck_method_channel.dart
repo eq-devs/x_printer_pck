@@ -71,6 +71,17 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     methodChannel.setMethodCallHandler(_handleMethodCall);
   }
 
+  /// Initializes the printer plugin
+  @override
+  Future<bool> init() async {
+    try {
+      final bool isInitialized = await methodChannel.invokeMethod('initialize');
+      return isInitialized;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Handle incoming method calls from native side
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
@@ -88,7 +99,6 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
         break;
 
       default:
-        print('Unknown method ${call.method}');
     }
   }
 

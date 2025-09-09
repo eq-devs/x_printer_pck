@@ -13,10 +13,17 @@ packages:
     dependency: transitive
     description:
       name: async
+<<<<<<< HEAD
       sha256: "758e6d74e971c3e5aceb4110bfd6698efc7f501675bcfe0c775459a8140750eb"
       url: "https://pub.dev"
     source: hosted
     version: "2.13.0"
+=======
+      sha256: d2872f9c19731c2e5f10444b14686eb7cc85c76274bd6c16e1816bff9a3bab63
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.12.0"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   boolean_selector:
     dependency: transitive
     description:
@@ -77,10 +84,17 @@ packages:
     dependency: transitive
     description:
       name: fake_async
+<<<<<<< HEAD
       sha256: "5368f224a74523e8d2e7399ea1638b37aecfca824a3cc4dfdf77bf1fa905ac44"
       url: "https://pub.dev"
     source: hosted
     version: "1.3.3"
+=======
+      sha256: "6a95e56b2449df2273fd8c45a662d6947ce1ebb7aafe80e550a3f68297f3cacc"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.2"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   ffi:
     dependency: transitive
     description:
@@ -101,10 +115,17 @@ packages:
     dependency: "direct main"
     description:
       name: file_picker
+<<<<<<< HEAD
       sha256: e7e16c9d15c36330b94ca0e2ad8cb61f93cd5282d0158c09805aed13b5452f22
       url: "https://pub.dev"
     source: hosted
     version: "10.3.2"
+=======
+      sha256: "77f8e81d22d2a07d0dee2c62e1dda71dc1da73bf43bb2d45af09727406167964"
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.1.9"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   file_selector_linux:
     dependency: transitive
     description:
@@ -117,10 +138,17 @@ packages:
     dependency: transitive
     description:
       name: file_selector_macos
+<<<<<<< HEAD
       sha256: "19124ff4a3d8864fdc62072b6a2ef6c222d55a3404fe14893a3c02744907b60c"
       url: "https://pub.dev"
     source: hosted
     version: "0.9.4+4"
+=======
+      sha256: "8c9250b2bd2d8d4268e39c82543bacbaca0fda7d29e0728c3c4bbb7c820fd711"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.9.4+3"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   file_selector_platform_interface:
     dependency: transitive
     description:
@@ -159,10 +187,17 @@ packages:
     dependency: transitive
     description:
       name: flutter_plugin_android_lifecycle
+<<<<<<< HEAD
       sha256: b0694b7fb1689b0e6cc193b3f1fcac6423c4f93c74fb20b806c6b6f196db0c31
       url: "https://pub.dev"
     source: hosted
     version: "2.0.30"
+=======
+      sha256: f948e346c12f8d5480d2825e03de228d0eb8c3a737e4cdaa122267b89c022b5e
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.28"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -182,10 +217,17 @@ packages:
     dependency: transitive
     description:
       name: http
+<<<<<<< HEAD
       sha256: bb2ce4590bc2667c96f318d68cac1b5a7987ec819351d32b1c987239a815e007
       url: "https://pub.dev"
     source: hosted
     version: "1.5.0"
+=======
+      sha256: "2c11f3f94c687ee9bad77c171151672986360b2b001d109814ee7140b2cf261b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.0"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   http_parser:
     dependency: transitive
     description:
@@ -206,10 +248,17 @@ packages:
     dependency: transitive
     description:
       name: image_picker_android
+<<<<<<< HEAD
       sha256: "28f3987ca0ec702d346eae1d90eda59603a2101b52f1e234ded62cff1d5cfa6e"
       url: "https://pub.dev"
     source: hosted
     version: "0.8.13+1"
+=======
+      sha256: "317a5d961cec5b34e777b9252393f2afbd23084aa6e60fcf601dcf6341b9ebeb"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.8.12+23"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   image_picker_for_web:
     dependency: transitive
     description:
@@ -267,10 +316,17 @@ packages:
     dependency: transitive
     description:
       name: leak_tracker
+<<<<<<< HEAD
       sha256: "6bb818ecbdffe216e81182c2f0714a2e62b593f4a4f13098713ff1685dfb6ab0"
       url: "https://pub.dev"
     source: hosted
     version: "10.0.9"
+=======
+      sha256: c35baad643ba394b40aac41080300150a4f08fd0fd6a10378f8f7c6bc161acec
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.0.8"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   leak_tracker_flutter_testing:
     dependency: transitive
     description:
@@ -347,10 +403,17 @@ packages:
     dependency: transitive
     description:
       name: path_provider_android
+<<<<<<< HEAD
       sha256: "993381400e94d18469750e5b9dcb8206f15bc09f9da86b9e44a9b0092a0066db"
       url: "https://pub.dev"
     source: hosted
     version: "2.2.18"
+=======
+      sha256: d0d310befe2c8ab9e7f393288ccbb11b60c019c6b5afc21973eeee4dda2b35e9
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.17"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   path_provider_foundation:
     dependency: transitive
     description:
@@ -496,10 +559,17 @@ packages:
     dependency: transitive
     description:
       name: vm_service
+<<<<<<< HEAD
       sha256: ddfa8d30d89985b96407efce8acbdd124701f96741f2d981ca860662f1c0dc02
       url: "https://pub.dev"
     source: hosted
     version: "15.0.0"
+=======
+      sha256: "0968250880a6c5fe7edc067ed0a13d4bae1577fe2771dcf3010d52c4a9d3ca14"
+      url: "https://pub.dev"
+    source: hosted
+    version: "14.3.1"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   web:
     dependency: transitive
     description:
@@ -512,18 +582,32 @@ packages:
     dependency: transitive
     description:
       name: webdriver
+<<<<<<< HEAD
       sha256: "2f3a14ca026957870cfd9c635b83507e0e51d8091568e90129fbf805aba7cade"
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
+=======
+      sha256: "3d773670966f02a646319410766d3b5e1037efb7f07cc68f844d5e06cd4d61c8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.4"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   win32:
     dependency: transitive
     description:
       name: win32
+<<<<<<< HEAD
       sha256: "66814138c3562338d05613a6e368ed8cfb237ad6d64a9e9334be3f309acfca03"
       url: "https://pub.dev"
     source: hosted
     version: "5.14.0"
+=======
+      sha256: "329edf97fdd893e0f1e3b9e88d6a0e627128cc17cc316a8d67fda8f1451178ba"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.13.0"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751
   x_printer_pck:
     dependency: "direct main"
     description:
@@ -548,5 +632,10 @@ packages:
     source: hosted
     version: "6.6.1"
 sdks:
+<<<<<<< HEAD
   dart: ">=3.8.0 <4.0.0"
   flutter: ">=3.29.0"
+=======
+  dart: ">=3.7.0 <4.0.0"
+  flutter: ">=3.27.0"
+>>>>>>> bb8e5efb45f5c20b853fd1e4f0ea38a086102751

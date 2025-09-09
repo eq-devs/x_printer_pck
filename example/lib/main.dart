@@ -58,12 +58,8 @@ class _Base64PrinterPageState extends State<Base64PrinterPage> {
   @override
   void initState() {
     super.initState();
-    _initializePrinter();
-  }
 
-  Future<void> _initializePrinter() async {
-    await XPrinterPck.initialize();
-
+    XPrinterPck.initialize();
     // Set up event listeners
     XPrinterPck.onScanResults = (devices) {
       setState(() {
