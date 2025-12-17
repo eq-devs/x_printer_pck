@@ -26,6 +26,10 @@ abstract class XPrinterPckPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  Future<bool> feedPaper() {
+    throw UnimplementedError('initialize() has not been implemented.');
+  }
+
   /// Initialize the printer plugin.
   Future<void> initialize() {
     throw UnimplementedError('initialize() has not been implemented.');

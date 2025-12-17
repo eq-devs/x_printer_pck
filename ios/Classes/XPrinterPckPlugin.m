@@ -25,14 +25,26 @@
     [registrar addMethodCallDelegate:instance channel:channel];
 }
 
+// - (instancetype)init {
+//     self = [super init];
+//     if (self) {
+//         self.peripherals = [NSMutableArray array];
+//         self.rssiList = [NSMutableArray array];
+        // self.bleManager = [TSCBLEManager sharedInstance];
+        // self.bleManager.delegate = self;
+//         _isInitialized = NO; // Initialize as not initialized
+//     }
+//     return self;
+// }
+// CHANGE 1: In the init method - Remove BLE manager initialization
 - (instancetype)init {
     self = [super init];
     if (self) {
         self.peripherals = [NSMutableArray array];
         self.rssiList = [NSMutableArray array];
-        self.bleManager = [TSCBLEManager sharedInstance];
-        self.bleManager.delegate = self;
-        _isInitialized = NO; // Initialize as not initialized
+        // REMOVED: self.bleManager = [TSCBLEManager sharedInstance];
+        // REMOVED: self.bleManager.delegate = self;
+        _isInitialized = NO;
     }
     return self;
 }
@@ -42,10 +54,8 @@
     
     // Add initialization method
     if ([@"initialize" isEqualToString:call.method]) {
-        NSLog(@"🔄 iOS: Calling initializePlugin");
         [self initializePlugin:result];
     } else if ([@"scanDevices" isEqualToString:call.method]) {
-        NSLog(@"🔍 iOS: Calling startScanDevices");
         [self startScanDevices:result];
     } else if ([@"stopScan" isEqualToString:call.method]) {
         [self stopScan:result];
@@ -67,8 +77,12 @@
         [self getPrinterStatus:result];
     } else if ([@"printPDF" isEqualToString:call.method]) {
         [self printPDF:call.arguments result:result];
-    } else {
-        NSLog(@"❌ iOS: FlutterMethodNotImplemented for method: %@", call.method);
+    } 
+    else if ([@"feedPaper" isEqualToString:call.method]) {
+        [self feedPaper:result];
+    }
+    
+    else {
         result(FlutterMethodNotImplemented);
     }
 }
@@ -80,35 +94,29 @@
 
 // Also update the initializePlugin method with more logging:
 - (void)initializePlugin:(FlutterResult)result {
-    NSLog(@"🔄 iOS: initializePlugin called");
     
     @try {
+        
         // Initialize the BLE manager
         if (self.bleManager == nil) {
-            NSLog(@"📱 iOS: Creating TSCBLEManager instance");
             self.bleManager = [TSCBLEManager sharedInstance];
             self.bleManager.delegate = self;
         } else {
-            NSLog(@"📱 iOS: TSCBLEManager already exists");
         }
         
         // Initialize arrays
         if (self.peripherals == nil) {
-            NSLog(@"📱 iOS: Creating peripherals array");
             self.peripherals = [NSMutableArray array];
         }
         if (self.rssiList == nil) {
-            NSLog(@"📱 iOS: Creating rssiList array");
             self.rssiList = [NSMutableArray array];
         }
         
         // Mark as initialized
         _isInitialized = YES;
         
-        NSLog(@"✅ iOS: XPrinterPck plugin initialized successfully");
         result(@YES);
     } @catch (NSException *exception) {
-        NSLog(@"❌ iOS: Error initializing plugin: %@", exception.description);
         result([FlutterError errorWithCode:@"INITIALIZATION_ERROR"
                                    message:@"Failed to initialize printer plugin"
                                    details:exception.description]);
@@ -549,6 +557,74 @@
     [self sendDataToPrinter:dataM result:result];
 }
 
+
+
+
+
+
+
+- (void)feedPaper:(FlutterResult)result {
+    if (![self checkInitialization:result]) return;
+    
+    if (!self.bleManager.isConnecting) {
+        result([FlutterError errorWithCode:@"NOT_CONNECTED"
+                                  message:@"Printer not connected"
+                                  details:nil]);
+        return;
+    }
+    
+    NSMutableData *dataM = [[NSMutableData alloc] init];
+    [dataM appendData:[@"^FF\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Send ^FF
+    
+    [self sendDataToPrinter:dataM result:result];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #pragma mark - Image Processing Helpers
 
 - (UIImage *)processImage:(UIImage *)originalImage 
@@ -559,7 +635,6 @@
                   quality:(CGFloat)quality {
     
     UIImage *image = originalImage;
-    NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
     
     // 1. Calculate target size based on printer width and scale
     CGFloat imageRatio = image.size.width / image.size.height;
@@ -570,7 +645,6 @@
         targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
     }
     
-    NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
     
     // 2. Resize image with quality settings
     UIGraphicsBeginImageContextWithOptions(targetSize, NO, quality);
@@ -587,13 +661,11 @@
     
     if (resizedImage) {
         image = resizedImage;
-        NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
     }
     
     // 3. Apply rotation if needed
     if (rotationAngle != 0) {
         image = [self rotateImage:image byAngle:rotationAngle];
-        NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
     }
     
     return image;
@@ -701,11 +773,21 @@
         // ZPL
         case 1:
         {
-            [dataM appendData:[ZPLCommand XA]];
-            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+            // [dataM appendData:[ZPLCommand XA]];
+            // [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
             
-            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
-            [dataM appendData:[ZPLCommand XZ]];
+            // [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
+            // [dataM appendData:[ZPLCommand XZ]];
+            // [dataM appendData:[@"^FF\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Advance to next label
+
+            [dataM appendData:[ZPLCommand XA]]; // Start label format
+            [dataM appendData:[@"^MTD\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Set die-cut label mode
+            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]]; // Set label width
+            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]]; // Draw image
+            [dataM appendData:[ZPLCommand XZ]]; // End label format
+            [dataM appendData:[@"^FF\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Advance to next label
+
+
         }
             break;
             
@@ -721,8 +803,8 @@
             break;
             
         default:
-            NSLog(@"Unknown command type: %d", commandType);
             return nil;
+              return nil;
     }
     
     return dataM;
@@ -750,7 +832,6 @@
     
     // Verify file exists
     BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:pdfPath];
-    NSLog(@"PDF path: %@, File exists: %@", pdfPath, fileExists ? @"YES" : @"NO");
     
     if (!fileExists) {
         result([FlutterError errorWithCode:@"FILE_NOT_FOUND"
@@ -761,7 +842,6 @@
     
     // Get total page count first
     int totalPages = [LabelDocument getPDFPages:pdfPath pdfPassword:nil];
-    NSLog(@"PDF total pages: %d", totalPages);
     
     if (totalPages <= 0) {
         result([FlutterError errorWithCode:@"PDF_INVALID"
@@ -804,13 +884,9 @@
     NSString *password = args[@"password"];
     
     // Log the parsing attempt
-    NSLog(@"Attempting to parse PDF: %@, pages %d to %d of %d total pages", 
-          pdfPath, startPage, endPage, totalPages);
     
     // Parse PDF using LabelDocument
     [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
-        NSLog(@"PDF parsing complete with error code: %ld, images count: %lu", 
-              (long)errorCode, (unsigned long)sourceImages.count);
         
         if (errorCode != DocSuccess) {
             NSString *errorMessage;
@@ -826,7 +902,6 @@
                     break;
             }
             
-            NSLog(@"PDF parsing error: %@", errorMessage);
             result([FlutterError errorWithCode:@"PDF_PARSING_ERROR"
                                       message:errorMessage
                                       details:nil]);

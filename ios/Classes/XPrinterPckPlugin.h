@@ -18,7 +18,7 @@
 @property (nonatomic, assign) BOOL isInitialized;
 
 // Method declarations
-- (void)initializePlugin:(FlutterResult)result;
+// - (void)initializePlugin:(FlutterResult)result;
 - (BOOL)checkInitialization:(FlutterResult)result;
 - (void)printImageBase64:(id)arguments result:(FlutterResult)result;
 
