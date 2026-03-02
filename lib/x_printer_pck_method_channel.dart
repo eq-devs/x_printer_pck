@@ -71,57 +71,57 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
 
   @override
   Future<void> initialize() async {
-    print('🔄 Flutter: Starting initialization...');
+    //print('🔄 Flutter: Starting initialization...');
 
     try {
       // Set up method call handler first
       methodChannel.setMethodCallHandler(_handleMethodCall);
-      print('✅ Flutter: Method call handler set up');
+      //print('✅ Flutter: Method call handler set up');
 
       // Call native initialization with explicit timeout
-      print('📱 Flutter: Calling native initialize method...');
+      //print('📱 Flutter: Calling native initialize method...');
 
       final result = await methodChannel.invokeMethod('initialize').timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          print('⏰ Flutter: Initialize method call timed out');
+          //print('⏰ Flutter: Initialize method call timed out');
           throw TimeoutException(
               'Initialize method call timed out', const Duration(seconds: 10));
         },
       );
 
-      print('📱 Flutter: Native initialize returned: $result');
+      //print('📱 Flutter: Native initialize returned: $result');
 
       if (result == true) {
         _isInitialized = true;
-        print('✅ Flutter: XPrinterPck initialized successfully');
+        //print('✅ Flutter: XPrinterPck initialized successfully');
       } else {
         _isInitialized = false;
-        print('❌ Flutter: Native initialize returned false');
+        //print('❌ Flutter: Native initialize returned false');
         throw Exception('Native initialization returned false');
       }
-    } on PlatformException catch (e) {
+    } on PlatformException {
       _isInitialized = false;
-      print(
-          '❌ Flutter: PlatformException during initialization: ${e.code} - ${e.message}');
-      print('   Details: ${e.details}');
+      //print(
+      // '❌ Flutter: PlatformException during initialization: ${e.code} - ${e.message}');
+      //print('   Details: ${e.details}');
       rethrow;
-    } on TimeoutException catch (e) {
+    } on TimeoutException {
       _isInitialized = false;
-      print('❌ Flutter: Timeout during initialization: $e');
+      //print('❌ Flutter: Timeout during initialization: $e');
       rethrow;
     } catch (e) {
       _isInitialized = false;
-      print('❌ Flutter: Unexpected error during initialization: $e');
+      //print('❌ Flutter: Unexpected error during initialization: $e');
       rethrow;
     }
   }
 
   // Add initialization check helper
   void _checkInitialization() {
-    print('🔍 Flutter: Checking initialization status: $_isInitialized');
+    //print('🔍 Flutter: Checking initialization status: $_isInitialized');
     if (!_isInitialized) {
-      print('❌ Flutter: Not initialized, throwing StateError');
+      //print('❌ Flutter: Not initialized, throwing StateError');
       throw StateError(
           'XPrinterPck not initialized. Call XPrinterPck.initialize() first.');
     }
@@ -129,7 +129,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
 
   // Handle incoming method calls from native side
   Future<dynamic> _handleMethodCall(MethodCall call) async {
-    print('📞 Flutter: Received method call: ${call.method}');
+    //print('📞 Flutter: Received method call: ${call.method}');
 
     switch (call.method) {
       case 'onScanResults':
@@ -137,18 +137,18 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
             .cast<Map<dynamic, dynamic>>()
             .map((device) => _convertToStringDynamicMap(device))
             .toList();
-        print('📱 Flutter: Scan results received: ${devices.length} devices');
+        //print('📱 Flutter: Scan results received: ${devices.length} devices');
         _scanResultsHandler?.call(devices);
         break;
 
       case 'onConnectionChanged':
         final status = _convertToStringDynamicMap(call.arguments);
-        print('📱 Flutter: Connection status changed: ${status['status']}');
+        //print('📱 Flutter: Connection status changed: ${status['status']}');
         _connectionChangedHandler?.call(status);
         break;
 
       default:
-        print('❓ Flutter: Unknown method call: ${call.method}');
+      //print('❓ Flutter: Unknown method call: ${call.method}');
     }
   }
 
@@ -159,49 +159,59 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
 
   @override
   Future<bool> scanDevices() async {
-    print('🔍 Flutter: scanDevices() called');
+    //print('🔍 Flutter: scanDevices() called');
     _checkInitialization();
 
     try {
-      print('📱 Flutter: Calling native scanDevices...');
+      //print('📱 Flutter: Calling native scanDevices...');
       final result = await methodChannel.invokeMethod('scanDevices');
-      print('📱 Flutter: Native scanDevices returned: $result');
+      //print('📱 Flutter: Native scanDevices returned: $result');
       return result;
     } catch (e) {
-      print('❌ Flutter: Error in scanDevices: $e');
+      //print('❌ Flutter: Error in scanDevices: $e');
       rethrow;
     }
   }
 
   @override
   Future<bool> stopScan() async {
-    print('⏹️ Flutter: stopScan() called');
+    //print('⏹️ Flutter: stopScan() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('stopScan');
   }
 
   @override
   Future<bool> connectDevice(int index) async {
-    print('🔗 Flutter: connectDevice($index) called');
+    //print('🔗 Flutter: connectDevice($index) called');
     _checkInitialization();
     return await methodChannel.invokeMethod('connectDevice', {'index': index});
   }
 
   @override
   Future<bool> disconnectDevice() async {
-    print('🔌 Flutter: disconnectDevice() called');
+    //print('🔌 Flutter: disconnectDevice() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('disconnectDevice');
   }
 
   @override
   Future<bool> printText(String text, {int fontSize = 1}) async {
-    print('📄 Flutter: printText() called');
+    //print('📄 Flutter: printText() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('printText', {
       'text': text,
       'fontSize': fontSize,
     });
+  }
+
+  @override
+  Future<bool> feedPaper() async {
+    try {
+      final bool? result = await methodChannel.invokeMethod('feedPaper');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
   }
 
   @override
@@ -212,7 +222,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     int height = 80,
     String type = '128',
   }) async {
-    print('📊 Flutter: printBarcode() called');
+    //print('📊 Flutter: printBarcode() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('printBarcode', {
       'content': content,
@@ -230,7 +240,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     int y = 10,
     int cellWidth = 8,
   }) async {
-    print('🔲 Flutter: printQRCode() called');
+    //print('🔲 Flutter: printQRCode() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('printQRCode', {
       'content': content,
@@ -249,7 +259,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     int rotation = 0,
     double scale = 0.91,
   }) async {
-    print('🖼️ Flutter: printImage() called');
+    //print('🖼️ Flutter: printImage() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('printImage', {
       'imageData': imageData,
@@ -274,7 +284,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     int? x,
     int? y,
   }) async {
-    print('🎨 Flutter: printImageBase64() called');
+    //print('🎨 Flutter: printImageBase64() called');
     _checkInitialization();
     return await methodChannel.invokeMethod('printImageBase64', {
       'base64String': base64String,
@@ -302,7 +312,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
     int? endPage,
     String? password,
   }) async {
-    print('📑 Flutter: printPDF() called');
+    //print('📑 Flutter: printPDF() called');
     _checkInitialization();
     try {
       return await methodChannel.invokeMethod('printPDF', {
@@ -323,7 +333,7 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
 
   @override
   Future<Map<String, dynamic>> getPrinterStatus() async {
-    print('📊 Flutter: getPrinterStatus() called');
+    //print('📊 Flutter: getPrinterStatus() called');
     _checkInitialization();
     final result = await methodChannel.invokeMethod('getPrinterStatus');
     return {
@@ -335,14 +345,14 @@ class MethodChannelXPrinterPck extends XPrinterPckPlatform {
   @override
   void registerScanResultsHandler(
       Function(List<Map<String, dynamic>>) handler) {
-    print('📝 Flutter: Registering scan results handler');
+    //print('📝 Flutter: Registering scan results handler');
     _scanResultsHandler = handler;
   }
 
   @override
   void registerConnectionChangedHandler(
       Function(Map<String, dynamic>) handler) {
-    print('📝 Flutter: Registering connection changed handler');
+    //print('📝 Flutter: Registering connection changed handler');
     _connectionChangedHandler = handler;
   }
 }

@@ -20,6 +20,15 @@ class XPrinterPck {
         .registerConnectionChangedHandler(_handleConnectionChanged);
   }
 
+  static Future<bool> feedPaper() async {
+    try {
+      final bool result = await XPrinterPckPlatform.instance.feedPaper();
+      return result;
+    } catch (e) {
+      return false;
+    }
+  }
+
   static Future<bool> init() async {
     try {
       final bool isInitialized = await XPrinterPckPlatform.instance.init();
@@ -204,7 +213,6 @@ class XPrinterPck {
         scale: scale,
       );
     } catch (e) {
-      print('Error decoding base64 image: $e');
       return false;
     }
   }
