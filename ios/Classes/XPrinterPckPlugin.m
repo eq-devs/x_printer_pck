@@ -160,6 +160,21 @@
     
     if (index >= 0 && index < [self.peripherals count]) {
         CBPeripheral *peripheral = self.peripherals[index];
+        
+        // If already connected to this same device, just return success
+        if (self.bleManager.isConnecting && 
+            [self.bleManager.writePeripheral.identifier isEqual:peripheral.identifier]) {
+            result(@YES);
+            return;
+        }
+        
+        // If connected to a different device, disconnect first
+        if (self.bleManager.isConnecting) {
+            [self.bleManager disconnectRootPeripheral];
+            // Small delay to let disconnect complete
+            [NSThread sleepForTimeInterval:0.3];
+        }
+        
         [self.bleManager connectDevice:peripheral];
         result(@YES);
     } else {
@@ -301,6 +316,8 @@
         return;
     }
     
+    @autoreleasepool {
+    
     NSDictionary *args = arguments;
     FlutterStandardTypedData *imageData = args[@"imageData"];
     
@@ -433,6 +450,7 @@
     }
     
     [self sendDataToPrinter:dataM result:result];
+    } // @autoreleasepool for printImage
 }
 
 // NEW BASE64 PRINT METHOD
@@ -445,6 +463,8 @@
                                   details:nil]);
         return;
     }
+    
+    @autoreleasepool {
     
     NSDictionary *args = arguments;
     NSString *base64String = args[@"base64String"];
@@ -555,6 +575,7 @@
     
     // Send to printer
     [self sendDataToPrinter:dataM result:result];
+    } // @autoreleasepool for printImageBase64
 }
 
 
@@ -636,6 +657,11 @@
     
     UIImage *image = originalImage;
     
+    // Guard against divide-by-zero if image has zero dimensions
+    if (image.size.width <= 0 || image.size.height <= 0) {
+        return nil;
+    }
+    
     // 1. Calculate target size based on printer width and scale
     CGFloat imageRatio = image.size.width / image.size.height;
     CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
@@ -643,6 +669,13 @@
     // If height exceeds printer height, scale down based on height
     if (targetSize.height > printerHeight * scale) {
         targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+    }
+    
+    // Safety: ensure image never exceeds actual label dimensions
+    if (targetSize.width > printerWidth || targetSize.height > printerHeight) {
+        CGFloat fitRatio = MIN((CGFloat)printerWidth / targetSize.width, 
+                               (CGFloat)printerHeight / targetSize.height);
+        targetSize = CGSizeMake(targetSize.width * fitRatio, targetSize.height * fitRatio);
     }
     
     
@@ -804,7 +837,6 @@
             
         default:
             return nil;
-              return nil;
     }
     
     return dataM;
@@ -819,6 +851,8 @@
                                   details:nil]);
         return;
     }
+    
+    @autoreleasepool {
     
     NSDictionary *args = arguments;
     NSString *pdfPath = args[@"pdfPath"];
@@ -841,7 +875,8 @@
     }
     
     // Get total page count first
-    int totalPages = [LabelDocument getPDFPages:pdfPath pdfPassword:nil];
+    NSString *password = args[@"password"];
+    int totalPages = [LabelDocument getPDFPages:pdfPath pdfPassword:password];
     
     if (totalPages <= 0) {
         result([FlutterError errorWithCode:@"PDF_INVALID"
@@ -880,13 +915,12 @@
     if (endPage > totalPages) endPage = totalPages;
     if (endPage < startPage) endPage = startPage;
     
-    // Password for protected PDFs (if provided)
-    NSString *password = args[@"password"];
     
     // Log the parsing attempt
     
     // Parse PDF using LabelDocument
     [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
+        @autoreleasepool {
         
         if (errorCode != DocSuccess) {
             NSString *errorMessage;
@@ -921,6 +955,7 @@
         __block NSString *errorMessage = nil;
         
         for (UIImage *pageImage in sourceImages) {
+            @autoreleasepool {
             dispatch_group_enter(group);
             
             NSMutableData *dataM = [[NSMutableData alloc] init];
@@ -935,6 +970,13 @@
             // If height exceeds printer height, scale down based on height
             if (targetSize.height > printerHeight * scale) {
                 targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+            }
+            
+            // Safety: ensure image never exceeds actual label dimensions
+            if (targetSize.width > printerWidth || targetSize.height > printerHeight) {
+                CGFloat fitRatio = MIN((CGFloat)printerWidth / targetSize.width, 
+                                       (CGFloat)printerHeight / targetSize.height);
+                targetSize = CGSizeMake(targetSize.width * fitRatio, targetSize.height * fitRatio);
             }
             
             NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
@@ -984,9 +1026,9 @@
                 }
             }
             
-            // Calculate centered position
-            int xPos = (printerWidth - image.size.width) / 2;
-            int yPos = (printerHeight - image.size.height) / 2;
+            // Calculate centered position (clamped to non-negative)
+            int xPos = MAX(0, (printerWidth - (int)image.size.width) / 2);
+            int yPos = MAX(0, (printerHeight - (int)image.size.height) / 2);
             
             // Convert to mm for TSC
             int xPosMM = xPos / 8;
@@ -1013,11 +1055,13 @@
                 // ZPL
                 case 1:
                 {
-                    [dataM appendData:[ZPLCommand XA]];
-                    [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+                    [dataM appendData:[ZPLCommand XA]]; // Start label format
+                    [dataM appendData:[@"^MTD\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Set die-cut label mode
+                    [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]]; // Set label width
                     
-                    [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
-                    [dataM appendData:[ZPLCommand XZ]];
+                    [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]]; // Draw image
+                    [dataM appendData:[ZPLCommand XZ]]; // End label format
+                    [dataM appendData:[@"^FF\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Advance to next label
                 }
                     break;
                     
@@ -1050,7 +1094,11 @@
             
             // Add a small delay between pages to avoid overwhelming the printer
             [NSThread sleepForTimeInterval:0.5];
+            } // @autoreleasepool per page
         }
+        
+        // Release source images to free memory
+        [sourceImages removeAllObjects];
         
         dispatch_group_notify(group, dispatch_get_main_queue(), ^{
             if (printSuccess) {
@@ -1063,7 +1111,9 @@
                                           details:nil]);
             }
         });
+        } // @autoreleasepool for callback
     }];
+    } // @autoreleasepool for printPDF
 }
 
 - (void)getPrinterStatus:(FlutterResult)result {
