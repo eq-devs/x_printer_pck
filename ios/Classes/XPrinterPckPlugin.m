@@ -1056,6 +1056,11 @@
 }
 
 - (void)TSCbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
+    [self.peripherals removeAllObjects];
+    [self.peripherals addObjectsFromArray:peripherals];
+    [self.rssiList removeAllObjects];
+    [self.rssiList addObjectsFromArray:rssiList];
+    
     NSMutableArray *deviceList = [NSMutableArray array];
     
     for (int i = 0; i < [peripherals count]; i++) {

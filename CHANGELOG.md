@@ -1,3 +1,7 @@
+## 0.0.59
+
+- Fixed printer connection issue by restoring device list tracking during scans.
+
 ## 0.0.58
 
 - Fixed build error: added missing type declaration for `dataM` in native iOS code.
