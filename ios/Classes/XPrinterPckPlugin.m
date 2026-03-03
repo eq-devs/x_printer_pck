@@ -50,9 +50,6 @@
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
-    NSLog(@"📱 iOS: Received method call: %@", call.method);
-    
-    // Add initialization method
     if ([@"initialize" isEqualToString:call.method]) {
         [self initializePlugin:result];
     } else if ([@"scanDevices" isEqualToString:call.method]) {
@@ -77,44 +74,26 @@
         [self getPrinterStatus:result];
     } else if ([@"printPDF" isEqualToString:call.method]) {
         [self printPDF:call.arguments result:result];
-    } 
-    else if ([@"feedPaper" isEqualToString:call.method]) {
+    } else if ([@"feedPaper" isEqualToString:call.method]) {
         [self feedPaper:result];
-    }
-    
-    else {
+    } else {
         result(FlutterMethodNotImplemented);
     }
 }
 
-
-#pragma mark - Initialization
-
-
-
-// Also update the initializePlugin method with more logging:
 - (void)initializePlugin:(FlutterResult)result {
-    
     @try {
-        
-        // Initialize the BLE manager
         if (self.bleManager == nil) {
             self.bleManager = [TSCBLEManager sharedInstance];
             self.bleManager.delegate = self;
-        } else {
         }
-        
-        // Initialize arrays
         if (self.peripherals == nil) {
             self.peripherals = [NSMutableArray array];
         }
         if (self.rssiList == nil) {
             self.rssiList = [NSMutableArray array];
         }
-        
-        // Mark as initialized
         _isInitialized = YES;
-        
         result(@YES);
     } @catch (NSException *exception) {
         result([FlutterError errorWithCode:@"INITIALIZATION_ERROR"
@@ -123,7 +102,6 @@
     }
 }
 
-// Add initialization check helper
 - (BOOL)checkInitialization:(FlutterResult)result {
     if (!_isInitialized) {
         result([FlutterError errorWithCode:@"NOT_INITIALIZED"
@@ -316,141 +294,97 @@
         return;
     }
     
-    @autoreleasepool {
-    
-    NSDictionary *args = arguments;
-    FlutterStandardTypedData *imageData = args[@"imageData"];
-    
-    if (!imageData) {
-        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
-                                  message:@"Image data is required"
-                                  details:nil]);
-        return;
-    }
-    
-    NSData *data = [imageData data];
-    UIImage *image = [UIImage imageWithData:data];
-    
-    if (!image) {
-        NSLog(@"Failed to create UIImage from data of length: %lu", (unsigned long)data.length);
-        result([FlutterError errorWithCode:@"INVALID_IMAGE"
-                                  message:@"Invalid image data"
-                                  details:nil]);
-        return;
-    }
-    
-    NSMutableData *dataM = [[NSMutableData alloc] init];
-    
-    // Get command type from arguments (default to TSC/0 if not provided)
-    NSNumber *commandTypeNum = args[@"commandType"];
-    int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
-    
-    // Get printer parameters
-    NSNumber *printerWidthNum = args[@"printerWidth"];
-    NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
-    
-    // Get rotation angle from arguments (default to 0 if not provided)
-    NSNumber *rotationAngleNum = args[@"rotation"];
-    int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
-    
-    // Get scale (default to 0.91 if not provided)
-    NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
-    
-    // Calculate target size based on printer width and scale
-    CGFloat imageRatio = image.size.width / image.size.height;
-    CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
-    
-    // If height exceeds printer height, scale down based on height
-    if (targetSize.height > printerHeight * scale) {
-        targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
-    }
-    
-    // Resize image to fit printer
-    UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
-    [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
-    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    
-    if (resizedImage) {
-        image = resizedImage;
-    }
-    
-    // Apply rotation if needed
-    if (rotationAngle != 0) {
-        CGFloat radians = rotationAngle * M_PI / 180.0;
-        CGRect rotatedRect = CGRectApplyAffineTransform(
-            CGRectMake(0, 0, image.size.width, image.size.height),
-            CGAffineTransformMakeRotation(radians));
-        
-        CGSize rotatedSize = rotatedRect.size;
-        
-        UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
-        CGContextRef context = UIGraphicsGetCurrentContext();
-        
-        CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
-        CGContextRotateCTM(context, radians);
-        
-        [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
-                                    image.size.width, image.size.height)];
-        
-        UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        
-        if (rotatedImage) {
-            image = rotatedImage;
-        }
-    }
-    
-    // Calculate position with top margin
-    int xPos = (printerWidth - image.size.width) / 2;
-    int yPos = 100;
-    int xPosMM = xPos / 8;
-    int yPosMM = yPos / 8;
-    
-    switch (commandType) {
-        case 0: // TSPL
-        {
-            int mmWidth = printerWidth / 8;
-            int mmHeight = printerHeight / 8;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        @autoreleasepool {
+            NSDictionary *args = arguments;
+            FlutterStandardTypedData *imageData = args[@"imageData"];
             
-            [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
-            [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
-            [dataM appendData:[TSCCommand cls]];
+            if (!imageData) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                              message:@"Image data is required"
+                                              details:nil]);
+                });
+                return;
+            }
             
-            [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
-            [dataM appendData:[TSCCommand print:1]];
-        }
-            break;
+            NSData *data = [imageData data];
+            UIImage *image = [UIImage imageWithData:data];
             
-        case 1: // ZPL
-        {
-            [dataM appendData:[ZPLCommand XA]];
-            [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]];
+            if (!image) {
+                NSLog(@"Failed to create UIImage from data of length: %lu", (unsigned long)data.length);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_IMAGE"
+                                              message:@"Invalid image data"
+                                              details:nil]);
+                });
+                return;
+            }
             
-            [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]];
-            [dataM appendData:[ZPLCommand XZ]];
-        }
-            break;
             
-        case 2: // CPCL
-        {
-            [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
+            // Get command type from arguments (default to TSC/0 if not provided)
+            NSNumber *commandTypeNum = args[@"commandType"];
+            int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
             
-            [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
-            [dataM appendData:[CPCLCommand form]];
-            [dataM appendData:[CPCLCommand print]];
-        }
-            break;
+            // Get printer parameters
+            NSNumber *printerWidthNum = args[@"printerWidth"];
+            NSNumber *printerHeightNum = args[@"printerHeight"];
+            int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
+            int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
             
-        default:
-            break;
-    }
-    
-    [self sendDataToPrinter:dataM result:result];
-    } // @autoreleasepool for printImage
+            // Get rotation angle from arguments (default to 0 if not provided)
+            NSNumber *rotationAngleNum = args[@"rotation"];
+            int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
+            
+            // Get scale (default to 0.91 if not provided)
+            NSNumber *scaleNum = args[@"scale"];
+            CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
+            
+            // Process image with configuration
+            UIImage *processedImage = [self processImage:image 
+                                            printerWidth:printerWidth 
+                                           printerHeight:printerHeight 
+                                                   scale:scale 
+                                                rotation:rotationAngle 
+                                                 quality:1.0]; // Default quality for raw image data
+            
+            if (!processedImage) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"IMAGE_PROCESSING_ERROR"
+                                              message:@"Failed to process image"
+                                              details:nil]);
+                });
+                return;
+            }
+            
+            // Calculate position (default to center for backward compatibility here if not specified, 
+            // but we'll use "center" alignment as default)
+            CGPoint position = [self calculatePosition:processedImage.size 
+                                          printerWidth:printerWidth 
+                                         printerHeight:printerHeight 
+                                             alignment:@"center" 
+                                               customX:0 
+                                               customY:100];
+            
+            // Generate printer commands
+            dataM = [self generatePrintCommands:processedImage 
+                                       position:position 
+                                   commandType:commandType 
+                                  printerWidth:printerWidth 
+                                 printerHeight:printerHeight];
+            
+            if (!dataM) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"COMMAND_GENERATION_ERROR"
+                                              message:@"Failed to generate printer commands"
+                                              details:nil]);
+                });
+                return;
+            }
+            
+            [self sendDataToPrinter:dataM result:result];
+        } // @autoreleasepool for printImage
+    });
 }
 
 // NEW BASE64 PRINT METHOD
@@ -464,17 +398,20 @@
         return;
     }
     
-    @autoreleasepool {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        @autoreleasepool {
     
     NSDictionary *args = arguments;
     NSString *base64String = args[@"base64String"];
     
-    if (!base64String || [base64String length] == 0) {
-        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
-                                  message:@"Base64 string is required"
-                                  details:nil]);
-        return;
-    }
+            if (!base64String || [base64String length] == 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                              message:@"Base64 string is required"
+                                              details:nil]);
+                });
+                return;
+            }
     
     // Remove data URL prefix if present (e.g., "data:image/png;base64,")
     if ([base64String containsString:@","]) {
@@ -487,24 +424,28 @@
     // Decode Base64 string to NSData
     NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:NSDataBase64DecodingIgnoreUnknownCharacters];
     
-    if (!imageData) {
-        NSLog(@"Failed to decode Base64 string");
-        result([FlutterError errorWithCode:@"INVALID_BASE64"
-                                  message:@"Invalid Base64 string"
-                                  details:nil]);
-        return;
-    }
+            if (!imageData) {
+                NSLog(@"Failed to decode Base64 string");
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_BASE64"
+                                              message:@"Invalid Base64 string"
+                                              details:nil]);
+                });
+                return;
+            }
     
     // Convert NSData to UIImage
     UIImage *image = [UIImage imageWithData:imageData];
     
-    if (!image) {
-        NSLog(@"Failed to create UIImage from decoded data of length: %lu", (unsigned long)imageData.length);
-        result([FlutterError errorWithCode:@"INVALID_IMAGE"
-                                  message:@"Invalid image data in Base64 string"
-                                  details:nil]);
-        return;
-    }
+            if (!image) {
+                NSLog(@"Failed to create UIImage from decoded data of length: %lu", (unsigned long)imageData.length);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_IMAGE"
+                                              message:@"Invalid image data in Base64 string"
+                                              details:nil]);
+                });
+                return;
+            }
     
     NSLog(@"Successfully decoded Base64 image: %.0f x %.0f", image.size.width, image.size.height);
     
@@ -544,12 +485,14 @@
                                         rotation:rotationAngle 
                                          quality:quality];
     
-    if (!processedImage) {
-        result([FlutterError errorWithCode:@"IMAGE_PROCESSING_ERROR"
-                                  message:@"Failed to process image"
-                                  details:nil]);
-        return;
-    }
+            if (!processedImage) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"IMAGE_PROCESSING_ERROR"
+                                              message:@"Failed to process image"
+                                              details:nil]);
+                });
+                return;
+            }
     
     // Calculate position based on alignment
     CGPoint position = [self calculatePosition:processedImage.size 
@@ -566,16 +509,19 @@
                                           printerWidth:printerWidth 
                                          printerHeight:printerHeight];
     
-    if (!dataM) {
-        result([FlutterError errorWithCode:@"COMMAND_GENERATION_ERROR"
-                                  message:@"Failed to generate printer commands"
-                                  details:nil]);
-        return;
-    }
+            if (!dataM) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"COMMAND_GENERATION_ERROR"
+                                              message:@"Failed to generate printer commands"
+                                              details:nil]);
+                });
+                return;
+            }
     
-    // Send to printer
-    [self sendDataToPrinter:dataM result:result];
-    } // @autoreleasepool for printImageBase64
+            // Send to printer
+            [self sendDataToPrinter:dataM result:result];
+        } // @autoreleasepool for printImageBase64
+    });
 }
 
 
@@ -847,301 +793,200 @@
     
     if (!self.bleManager.isConnecting) {
         result([FlutterError errorWithCode:@"NOT_CONNECTED"
-                                  message:@"Printer not connected"
-                                  details:nil]);
+                                   message:@"Printer not connected"
+                                   details:nil]);
         return;
     }
     
-    @autoreleasepool {
-    
-    NSDictionary *args = arguments;
-    NSString *pdfPath = args[@"pdfPath"];
-    
-    if (!pdfPath || [pdfPath length] == 0) {
-        result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
-                                  message:@"PDF path is required"
-                                  details:nil]);
-        return;
-    }
-    
-    // Verify file exists
-    BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:pdfPath];
-    
-    if (!fileExists) {
-        result([FlutterError errorWithCode:@"FILE_NOT_FOUND"
-                                  message:[NSString stringWithFormat:@"PDF file not found at: %@", pdfPath]
-                                  details:nil]);
-        return;
-    }
-    
-    // Log file size for debugging
-    NSDictionary *fileAttrs = [[NSFileManager defaultManager] attributesOfItemAtPath:pdfPath error:nil];
-    NSNumber *fileSize = fileAttrs[NSFileSize];
-    
-    // Get total page count using Core Graphics directly (more reliable than SDK)
-    NSString *password = args[@"password"];
-    NSURL *pdfURL = [NSURL fileURLWithPath:pdfPath];
-    CGPDFDocumentRef pdfDoc = CGPDFDocumentCreateWithURL((__bridge CFURLRef)pdfURL);
-    
-    if (pdfDoc == NULL) {
-        result([FlutterError errorWithCode:@"PDF_INVALID"
-                                  message:[NSString stringWithFormat:@"Cannot open PDF. File size: %@ bytes. Path: %@", fileSize, pdfPath]
-                                  details:nil]);
-        return;
-    }
-    
-    // Unlock if password-protected
-    if (password && [password length] > 0) {
-        const char *pwd = [password UTF8String];
-        if (!CGPDFDocumentUnlockWithPassword(pdfDoc, pwd)) {
-            CGPDFDocumentRelease(pdfDoc);
-            result([FlutterError errorWithCode:@"PDF_LOCKED"
-                                      message:@"Could not unlock PDF with provided password"
-                                      details:nil]);
-            return;
-        }
-    }
-    
-    int totalPages = (int)CGPDFDocumentGetNumberOfPages(pdfDoc);
-    CGPDFDocumentRelease(pdfDoc);
-    
-    if (totalPages <= 0) {
-        result([FlutterError errorWithCode:@"PDF_INVALID"
-                                  message:[NSString stringWithFormat:@"PDF has 0 pages. File size: %@ bytes. Path: %@", fileSize, pdfPath]
-                                  details:nil]);
-        return;
-    }
-    
-    // Get command type from arguments (default to TSC/0 if not provided)
-    NSNumber *commandTypeNum = args[@"commandType"];
-    int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
-    
-    // Get printer parameters
-    NSNumber *printerWidthNum = args[@"printerWidth"];
-    NSNumber *printerHeightNum = args[@"printerHeight"];
-    int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
-    int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
-    
-    // Get rotation angle from arguments (default to 0 if not provided)
-    NSNumber *rotationAngleNum = args[@"rotation"];
-    int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
-    
-    // Get scale (default to 0.91 if not provided)
-    NSNumber *scaleNum = args[@"scale"];
-    CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
-    
-    // Get specific page to print (if specified)
-    NSNumber *startPageNum = args[@"startPage"];
-    NSNumber *endPageNum = args[@"endPage"];
-    int startPage = startPageNum ? [startPageNum intValue] : 1;
-    int endPage = endPageNum ? [endPageNum intValue] : totalPages;
-    
-    // Validate page numbers
-    if (startPage < 1) startPage = 1;
-    if (startPage > totalPages) startPage = totalPages;
-    if (endPage > totalPages) endPage = totalPages;
-    if (endPage < startPage) endPage = startPage;
-    
-    
-    // Log the parsing attempt
-    
-    // Parse PDF using LabelDocument
-    [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         @autoreleasepool {
-        
-        if (errorCode != DocSuccess) {
-            NSString *errorMessage;
-            switch (errorCode) {
-                case CGPDFDocumentRefNULL:
-                    errorMessage = @"Failed to create PDF document reference";
-                    break;
-                case PageNumberExceeds:
-                    errorMessage = @"Requested page number exceeds document length";
-                    break;
-                default:
-                    errorMessage = @"Unknown error parsing PDF";
-                    break;
+            NSDictionary *args = arguments;
+            NSString *pdfPath = args[@"pdfPath"];
+            
+            if (!pdfPath || [pdfPath length] == 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"INVALID_ARGUMENTS"
+                                              message:@"PDF path is required"
+                                              details:nil]);
+                });
+                return;
             }
             
-            result([FlutterError errorWithCode:@"PDF_PARSING_ERROR"
-                                      message:errorMessage
-                                      details:nil]);
-            return;
-        }
-        
-        if ([sourceImages count] == 0) {
-            result([FlutterError errorWithCode:@"PDF_EMPTY"
-                                      message:@"No pages in PDF or no pages in selected range"
-                                      details:nil]);
-            return;
-        }
-        
-        // Process each page
-        dispatch_group_t group = dispatch_group_create();
-        __block BOOL printSuccess = YES;
-        __block NSString *errorMessage = nil;
-        
-        for (UIImage *pageImage in sourceImages) {
-            @autoreleasepool {
-            dispatch_group_enter(group);
-            
-            NSMutableData *dataM = [[NSMutableData alloc] init];
-            
-            // Resize image to fit printer
-            UIImage *image = pageImage;
-            NSLog(@"Original image size: %.0f x %.0f", image.size.width, image.size.height);
-            
-            CGFloat imageRatio = image.size.width / image.size.height;
-            CGSize targetSize = CGSizeMake(printerWidth * scale, printerWidth * scale / imageRatio);
-            
-            // If height exceeds printer height, scale down based on height
-            if (targetSize.height > printerHeight * scale) {
-                targetSize = CGSizeMake(printerHeight * scale * imageRatio, printerHeight * scale);
+            BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:pdfPath];
+            if (!fileExists) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"FILE_NOT_FOUND"
+                                              message:[NSString stringWithFormat:@"PDF file not found at: %@", pdfPath]
+                                              details:nil]);
+                });
+                return;
             }
             
-            // Safety: ensure image never exceeds actual label dimensions
-            if (targetSize.width > printerWidth || targetSize.height > printerHeight) {
-                CGFloat fitRatio = MIN((CGFloat)printerWidth / targetSize.width, 
-                                       (CGFloat)printerHeight / targetSize.height);
-                targetSize = CGSizeMake(targetSize.width * fitRatio, targetSize.height * fitRatio);
+            NSDictionary *fileAttrs = [[NSFileManager defaultManager] attributesOfItemAtPath:pdfPath error:nil];
+            NSNumber *fileSize = fileAttrs[NSFileSize];
+            
+            NSString *password = args[@"password"];
+            NSURL *pdfURL = [NSURL fileURLWithPath:pdfPath];
+            CGPDFDocumentRef pdfDoc = CGPDFDocumentCreateWithURL((__bridge CFURLRef)pdfURL);
+            
+            if (pdfDoc == NULL) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"PDF_INVALID"
+                                              message:[NSString stringWithFormat:@"Cannot open PDF. File size: %@ bytes. Path: %@", fileSize, pdfPath]
+                                              details:nil]);
+                });
+                return;
             }
             
-            NSLog(@"Target image size: %.0f x %.0f", targetSize.width, targetSize.height);
-            
-            // Resize image to fit printer
-            UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
-            [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
-            UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
-            
-            if (resizedImage) {
-                image = resizedImage;
-                NSLog(@"Resized image size: %.0f x %.0f", image.size.width, image.size.height);
-            }
-            
-            // Apply rotation if needed
-            if (rotationAngle != 0) {
-                // Convert degrees to radians
-                CGFloat radians = rotationAngle * M_PI / 180.0;
-                
-                // Calculate the size of the rotated image
-                CGRect rotatedRect = CGRectApplyAffineTransform(
-                    CGRectMake(0, 0, image.size.width, image.size.height),
-                    CGAffineTransformMakeRotation(radians));
-                
-                CGSize rotatedSize = rotatedRect.size;
-                
-                // Create a new context with the rotated size
-                UIGraphicsBeginImageContextWithOptions(rotatedSize, NO, image.scale);
-                CGContextRef context = UIGraphicsGetCurrentContext();
-                
-                // Move to center and rotate
-                CGContextTranslateCTM(context, rotatedSize.width/2, rotatedSize.height/2);
-                CGContextRotateCTM(context, radians);
-                
-                // Draw the original image centered
-                [image drawInRect:CGRectMake(-image.size.width/2, -image.size.height/2, 
-                                            image.size.width, image.size.height)];
-                
-                // Get the rotated image
-                UIImage *rotatedImage = UIGraphicsGetImageFromCurrentImageContext();
-                UIGraphicsEndImageContext();
-                
-                if (rotatedImage) {
-                    image = rotatedImage;
-                    NSLog(@"Rotated image size: %.0f x %.0f", image.size.width, image.size.height);
+            if (password && [password length] > 0) {
+                const char *pwd = [password UTF8String];
+                if (!CGPDFDocumentUnlockWithPassword(pdfDoc, pwd)) {
+                    CGPDFDocumentRelease(pdfDoc);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        result([FlutterError errorWithCode:@"PDF_LOCKED"
+                                                  message:@"Could not unlock PDF with provided password"
+                                                  details:nil]);
+                    });
+                    return;
                 }
             }
             
-            // Calculate position with top margin
-            int xPos = MAX(0, (printerWidth - (int)image.size.width) / 2);
-            int yPos = 200;
+            int totalPages = (int)CGPDFDocumentGetNumberOfPages(pdfDoc);
+            CGPDFDocumentRelease(pdfDoc);
             
-            // Convert to mm for TSC
-            int xPosMM = xPos / 8;
-            int yPosMM = yPos / 8;
-            
-            NSLog(@"Printing with command type: %d, position: %d,%d", commandType, xPos, yPos);
-            
-            switch (commandType) {
-                // TSPL
-                case 0:
-                {
-                    int mmWidth = printerWidth / 8; // Approximate conversion from dots to mm
-                    int mmHeight = printerHeight / 8;
-                    
-                    [dataM appendData:[TSCCommand sizeBymmWithWidth:mmWidth andHeight:mmHeight]];
-                    [dataM appendData:[TSCCommand gapBymmWithWidth:0 andHeight:0]];
-                    [dataM appendData:[TSCCommand cls]];
-                    
-                    [dataM appendData:[TSCCommand bitmapWithX:xPosMM andY:yPosMM andMode:0 andImage:image]];
-                    [dataM appendData:[TSCCommand print:1]];
-                }
-                    break;
-                    
-                // ZPL
-                case 1:
-                {
-                    [dataM appendData:[ZPLCommand XA]]; // Start label format
-                    [dataM appendData:[@"^MTD\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Set die-cut label mode
-                    [dataM appendData:[ZPLCommand setLabelWidth:printerWidth]]; // Set label width
-                    
-                    [dataM appendData:[ZPLCommand drawImageWithx:xPos y:yPos image:image]]; // Draw image
-                    [dataM appendData:[ZPLCommand XZ]]; // End label format
-                    [dataM appendData:[@"^FF\n" dataUsingEncoding:NSASCIIStringEncoding]]; // Advance to next label
-                }
-                    break;
-                    
-                // CPCL
-                case 2:
-                {
-                    [dataM appendData:[CPCLCommand initLabelWithHeight:printerHeight count:1 offsetx:0]];
-                    
-                    [dataM appendData:[CPCLCommand drawImageWithx:xPos y:yPos image:image]];
-                    [dataM appendData:[CPCLCommand form]];
-                    [dataM appendData:[CPCLCommand print]];
-                }
-                    break;
-                    
-                default:
-                    break;
+            if (totalPages <= 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    result([FlutterError errorWithCode:@"PDF_INVALID"
+                                              message:[NSString stringWithFormat:@"PDF has 0 pages. File size: %@ bytes. Path: %@", fileSize, pdfPath]
+                                              details:nil]);
+                });
+                return;
             }
             
-            // Send the data to printer
-            [self.bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-                if (error) {
-                    printSuccess = NO;
-                    errorMessage = error.localizedDescription;
-                    NSLog(@"Print error: %@", error);
-                } else {
-                    NSLog(@"Page printed successfully");
-                }
-                dispatch_group_leave(group);
+            NSNumber *commandTypeNum = args[@"commandType"];
+            int commandType = commandTypeNum ? [commandTypeNum intValue] : 0;
+            
+            NSNumber *printerWidthNum = args[@"printerWidth"];
+            NSNumber *printerHeightNum = args[@"printerHeight"];
+            int printerWidth = printerWidthNum ? [printerWidthNum intValue] : 350;
+            int printerHeight = printerHeightNum ? [printerHeightNum intValue] : 350;
+            
+            NSNumber *rotationAngleNum = args[@"rotation"];
+            int rotationAngle = rotationAngleNum ? [rotationAngleNum intValue] : 0;
+            
+            NSNumber *scaleNum = args[@"scale"];
+            CGFloat scale = scaleNum ? [scaleNum floatValue] : 0.91;
+            
+            NSNumber *startPageNum = args[@"startPage"];
+            NSNumber *endPageNum = args[@"endPage"];
+            int startPage = startPageNum ? [startPageNum intValue] : 1;
+            int endPage = endPageNum ? [endPageNum intValue] : totalPages;
+            
+            if (startPage < 1) startPage = 1;
+            if (startPage > totalPages) startPage = totalPages;
+            if (endPage > totalPages) endPage = totalPages;
+            if (endPage < startPage) endPage = startPage;
+            
+            [LabelDocument parsingDoc:pdfPath start:startPage end:endPage password:password DataCallBack:^(NSMutableArray<UIImage *> *sourceImages, DocErrorCode errorCode) {
+                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                    @autoreleasepool {
+                        if (errorCode != DocSuccess) {
+                            NSString *errorMessage;
+                            switch (errorCode) {
+                                case CGPDFDocumentRefNULL:
+                                    errorMessage = @"Failed to create PDF document reference";
+                                    break;
+                                case PageNumberExceeds:
+                                    errorMessage = @"Requested page number exceeds document length";
+                                    break;
+                                default:
+                                    errorMessage = @"Unknown error parsing PDF";
+                                    break;
+                            }
+                            
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                result([FlutterError errorWithCode:@"PDF_PARSING_ERROR"
+                                                          message:errorMessage
+                                                          details:nil]);
+                            });
+                            return;
+                        }
+                        
+                        if ([sourceImages count] == 0) {
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                result([FlutterError errorWithCode:@"PDF_EMPTY"
+                                                          message:@"No pages in PDF or no pages in selected range"
+                                                          details:nil]);
+                            });
+                            return;
+                        }
+                        
+                        dispatch_group_t group = dispatch_group_create();
+                        __block BOOL printSuccess = YES;
+                        __block NSString *errorMessage = nil;
+                        
+                        for (UIImage *pageImage in sourceImages) {
+                            @autoreleasepool {
+                                dispatch_group_enter(group);
+                                UIImage *image = pageImage;
+                                
+                                UIImage *processedImage = [self processImage:pageImage 
+                                                                printerWidth:printerWidth 
+                                                               printerHeight:printerHeight 
+                                                                       scale:scale 
+                                                                    rotation:rotationAngle 
+                                                                     quality:1.0];
+                                
+                                if (processedImage) {
+                                    image = processedImage;
+                                }
+                                
+                                CGPoint position = [self calculatePosition:image.size 
+                                                              printerWidth:printerWidth 
+                                                             printerHeight:printerHeight 
+                                                                 alignment:@"center" 
+                                                                   customX:0 
+                                                                   customY:200];
+                                
+                                NSMutableData *dataM = [self generatePrintCommands:image 
+                                                                           position:position 
+                                                                       commandType:commandType 
+                                                                      printerWidth:printerWidth 
+                                                                     printerHeight:printerHeight];
+                                
+                                if (!dataM) {
+                                    printSuccess = NO;
+                                    errorMessage = @"Failed to generate printer commands for PDF page";
+                                    dispatch_group_leave(group);
+                                    continue;
+                                }
+                                
+                                [self.bleManager writeCommandWithData:dataM writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
+                                    if (error) {
+                                        printSuccess = NO;
+                                        errorMessage = error.localizedDescription;
+                                    }
+                                    dispatch_group_leave(group);
+                                }];
+                            }
+                        }
+                        
+                        [sourceImages removeAllObjects];
+                        
+                        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+                            if (printSuccess) {
+                                result(@YES);
+                            } else {
+                                result([FlutterError errorWithCode:@"PRINT_ERROR"
+                                                          message:errorMessage ?: @"Error printing PDF"
+                                                          details:nil]);
+                            }
+                        });
+                    }
+                });
             }];
-            
-            // Add delay between pages to avoid overwhelming the BLE printer buffer
-            // (larger images like 900x900 need more time)
-            [NSThread sleepForTimeInterval:2.0];
-            } // @autoreleasepool per page
         }
-        
-        // Release source images to free memory
-        [sourceImages removeAllObjects];
-        
-        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-            if (printSuccess) {
-                NSLog(@"All pages printed successfully");
-                result(@YES);
-            } else {
-                NSLog(@"Print failed: %@", errorMessage ?: @"Unknown error");
-                result([FlutterError errorWithCode:@"PRINT_ERROR"
-                                          message:errorMessage ?: @"Error printing PDF"
-                                          details:nil]);
-            }
-        });
-        } // @autoreleasepool for callback
-    }];
-    } // @autoreleasepool for printPDF
+    });
 }
 
 - (void)getPrinterStatus:(FlutterResult)result {
@@ -1195,32 +1040,22 @@
     }];
 }
 
-#pragma mark - Helper Methods
-
 - (void)sendDataToPrinter:(NSMutableData *)data result:(FlutterResult)result {
     __weak typeof(self) weakSelf = self;
     [self.bleManager writeCommandWithData:data writeCallBack:^(CBCharacteristic *characteristic, NSError *error) {
-        if (error) {
-            result([FlutterError errorWithCode:@"PRINT_ERROR"
-                                       message:error.localizedDescription
-                                       details:nil]);
-            return;
-        }
-        result(@YES);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                result([FlutterError errorWithCode:@"PRINT_ERROR"
+                                           message:error.localizedDescription
+                                           details:nil]);
+                return;
+            }
+            result(@YES);
+        });
     }];
 }
 
-#pragma mark - TSCBLEManagerDelegate
-
 - (void)TSCbleUpdatePeripheralList:(NSArray *)peripherals RSSIList:(NSArray *)rssiList {
-    // Update local copies
-    [self.peripherals removeAllObjects];
-    [self.peripherals addObjectsFromArray:peripherals];
-    
-    [self.rssiList removeAllObjects];
-    [self.rssiList addObjectsFromArray:rssiList];
-    
-    // Convert peripherals to map for Flutter
     NSMutableArray *deviceList = [NSMutableArray array];
     
     for (int i = 0; i < [peripherals count]; i++) {

@@ -1,3 +1,12 @@
+## 0.0.57
+
+- Fixed UI freeze on iOS during PDF and image printing by moving all processing logic to background threads.
+- Refactored native iOS code to use shared helper methods for image processing and command generation.
+- Improved memory management in PDF printing using `@autoreleasepool`.
+- Fast-paced printing: Removed hardcoded delays between pages, relying on printer buffer management.
+- Cleaned up native code and removed redundant comments/logging for production readiness.
+- Removed extraneous boilerplate tests to keep the package lean.
+
 ## 0.0.5
 
 - Fixed print vertical alignment to start with a standard top margin instead of center alignment.
