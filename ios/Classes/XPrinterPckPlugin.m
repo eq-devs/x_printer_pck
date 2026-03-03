@@ -404,9 +404,9 @@
         }
     }
     
-    // Calculate centered position
+    // Calculate position with top margin
     int xPos = (printerWidth - image.size.width) / 2;
-    int yPos = (printerHeight - image.size.height) / 2;
+    int yPos = 100;
     int xPosMM = xPos / 8;
     int yPosMM = yPos / 8;
     
@@ -745,7 +745,7 @@
     
     if ([alignment isEqualToString:@"center"]) {
         position.x = (printerWidth - imageSize.width) / 2;
-        position.y = (printerHeight - imageSize.height) / 2;
+        position.y = 100;
     } else if ([alignment isEqualToString:@"topLeft"]) {
         position.x = 0;
         position.y = 0;
@@ -762,9 +762,9 @@
         position.x = customX;
         position.y = customY;
     } else {
-        // Default to center
+        // Default to top with margin
         position.x = (printerWidth - imageSize.width) / 2;
-        position.y = (printerHeight - imageSize.height) / 2;
+        position.y = 100;
     }
     
     // Ensure position is within bounds
@@ -1026,9 +1026,9 @@
                 }
             }
             
-            // Calculate centered position (clamped to non-negative)
+            // Calculate position with top margin
             int xPos = MAX(0, (printerWidth - (int)image.size.width) / 2);
-            int yPos = MAX(0, (printerHeight - (int)image.size.height) / 2);
+            int yPos = 200;
             
             // Convert to mm for TSC
             int xPosMM = xPos / 8;
