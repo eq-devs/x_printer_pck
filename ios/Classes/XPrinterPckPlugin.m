@@ -869,18 +869,45 @@
     
     if (!fileExists) {
         result([FlutterError errorWithCode:@"FILE_NOT_FOUND"
-                                  message:@"PDF file not found at provided path"
+                                  message:[NSString stringWithFormat:@"PDF file not found at: %@", pdfPath]
                                   details:nil]);
         return;
     }
     
-    // Get total page count first
+    // Log file size for debugging
+    NSDictionary *fileAttrs = [[NSFileManager defaultManager] attributesOfItemAtPath:pdfPath error:nil];
+    NSNumber *fileSize = fileAttrs[NSFileSize];
+    
+    // Get total page count using Core Graphics directly (more reliable than SDK)
     NSString *password = args[@"password"];
-    int totalPages = [LabelDocument getPDFPages:pdfPath pdfPassword:password];
+    NSURL *pdfURL = [NSURL fileURLWithPath:pdfPath];
+    CGPDFDocumentRef pdfDoc = CGPDFDocumentCreateWithURL((__bridge CFURLRef)pdfURL);
+    
+    if (pdfDoc == NULL) {
+        result([FlutterError errorWithCode:@"PDF_INVALID"
+                                  message:[NSString stringWithFormat:@"Cannot open PDF. File size: %@ bytes. Path: %@", fileSize, pdfPath]
+                                  details:nil]);
+        return;
+    }
+    
+    // Unlock if password-protected
+    if (password && [password length] > 0) {
+        const char *pwd = [password UTF8String];
+        if (!CGPDFDocumentUnlockWithPassword(pdfDoc, pwd)) {
+            CGPDFDocumentRelease(pdfDoc);
+            result([FlutterError errorWithCode:@"PDF_LOCKED"
+                                      message:@"Could not unlock PDF with provided password"
+                                      details:nil]);
+            return;
+        }
+    }
+    
+    int totalPages = (int)CGPDFDocumentGetNumberOfPages(pdfDoc);
+    CGPDFDocumentRelease(pdfDoc);
     
     if (totalPages <= 0) {
         result([FlutterError errorWithCode:@"PDF_INVALID"
-                                  message:@"Could not determine PDF page count or PDF is invalid"
+                                  message:[NSString stringWithFormat:@"PDF has 0 pages. File size: %@ bytes. Path: %@", fileSize, pdfPath]
                                   details:nil]);
         return;
     }
@@ -1092,8 +1119,9 @@
                 dispatch_group_leave(group);
             }];
             
-            // Add a small delay between pages to avoid overwhelming the printer
-            [NSThread sleepForTimeInterval:0.5];
+            // Add delay between pages to avoid overwhelming the BLE printer buffer
+            // (larger images like 900x900 need more time)
+            [NSThread sleepForTimeInterval:2.0];
             } // @autoreleasepool per page
         }
         

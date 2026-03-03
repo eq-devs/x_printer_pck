@@ -1,6 +1,11 @@
-## 0.0.1
+## 0.0.5
 
-* Initial release
+- Fixed print vertical alignment to start with a standard top margin instead of center alignment.
+- Optimized `printPDF` using native Core Graphics API for extremely reliable PDF reading and page counting, replacing the unreliable `LabelDocument` SDK logic.
+- Expanded inter-page BLE delay to allow large PDF pages to finish processing without overflowing the printer buffer.
+- Removed unnecessary debug logs from production iOS code for better performance.
+
+## 0.0.4
 * Support for iOS Bluetooth thermal printer integration
 * Features include device scanning, connection management, text printing, barcode/QR code printing, and image printing
 
