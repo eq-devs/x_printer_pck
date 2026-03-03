@@ -367,7 +367,7 @@
                                                customY:100];
             
             // Generate printer commands
-            dataM = [self generatePrintCommands:processedImage 
+            NSMutableData *dataM = [self generatePrintCommands:processedImage 
                                        position:position 
                                    commandType:commandType 
                                   printerWidth:printerWidth 

@@ -1,3 +1,7 @@
+## 0.0.58
+
+- Fixed build error: added missing type declaration for `dataM` in native iOS code.
+
 ## 0.0.57
 
 - Fixed UI freeze on iOS during PDF and image printing by moving all processing logic to background threads.
